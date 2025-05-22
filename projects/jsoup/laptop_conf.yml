@@ -15,7 +15,7 @@ execution_plan:
   randomize_tasks: true
   batch_size: 10
   num_commits: 100
-  search_strategy: three_point
+  #search_strategy: three_point
 
 limits:
   temperature_safe_limit: 65000

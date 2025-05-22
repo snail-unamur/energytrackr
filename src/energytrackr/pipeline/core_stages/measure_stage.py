@@ -74,6 +74,15 @@ class MeasureEnergyStage(PipelineStage):
 
         logger.info("Appended energy data to %s", output_file, context=context)
 
+        # record as float for later statistical tests
+        try:
+            context["energy_value"] = float(energy_pkg)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            logger.warning("Failed to parse energy value '%s'", energy_pkg, context=context)
+            if not config.execution_plan.ignore_failures:
+                context["abort_pipeline"] = True
+                return
+
     @staticmethod
     def extract_energy_value(perf_output: str, event_name: str) -> str | None:
         """Extracts the value of the specified event from perf output.
