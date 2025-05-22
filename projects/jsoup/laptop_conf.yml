@@ -1,0 +1,33 @@
+config_version: "1.0.0"
+
+repo:
+  url: https://github.com/jhy/jsoup
+  branch: master
+
+execution_plan:
+  mode: tests
+  compile_commands:
+    - mvn clean test-compile
+  granularity: commits
+  test_command: mvn surefire:test
+  num_runs: 15
+  num_repeats: 1
+  randomize_tasks: true
+  batch_size: 10
+  num_commits: 100
+  search_strategy: three_point
+
+limits:
+  temperature_safe_limit: 65000
+
+regression_detection:
+  min_commits_before: 0
+
+tracked_file_extensions:
+  - java
+  - xml
+  - properties
+  - yaml
+  - yml
+
+cpu_thermal_file: /sys/class/hwmon/hwmon5/temp1_input

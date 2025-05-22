@@ -30,6 +30,17 @@ class GranularityEnum(StrEnum):
     TAGS = "tags"
 
 
+class SearchStrategyEnum(StrEnum):
+    """Batch search strategies for detecting regressions.
+
+    - 'naive': Process all commits in fixed batches.
+    - 'three_point': Use 3-point regression-aware search.
+    """
+
+    NAIVE = "naive"
+    THREE_POINT = "three_point"
+
+
 class RepositoryDefinition(BaseModel):
     """Definition of the repository to be tested."""
 
@@ -86,10 +97,26 @@ class ExecutionPlanDefinition(BaseModel):
         description="Command to execute after tests are run.",
         examples=["echo 'Tests completed'"],
     )
-    num_commits: int | None = Field(default=None, description="Number of commits to test.", examples=[15])
-    num_runs: int = Field(default=1, description="Number of times each test should be run.", examples=[30])
-    num_repeats: int = Field(default=1, description="Number of repetitions for each test execution.", examples=[1])
-    batch_size: int = Field(default=100, description="Number of tasks to execute in one batch.", examples=[100])
+    num_commits: int | None = Field(
+        default=None,
+        description="Number of commits to test.",
+        examples=[15],
+    )
+    num_runs: int = Field(
+        default=1,
+        description="Number of times each test should be run.",
+        examples=[30],
+    )
+    num_repeats: int = Field(
+        default=1,
+        description="Number of repetitions for each test execution.",
+        examples=[1],
+    )
+    batch_size: int = Field(
+        default=100,
+        description="Number of tasks to execute in one batch.",
+        examples=[100],
+    )
     randomize_tasks: bool = Field(
         default=False,
         description="Flag indicating whether the test tasks should be executed in random order.",
@@ -109,6 +136,22 @@ class ExecutionPlanDefinition(BaseModel):
         default=False,
         description="Flag indicating whether to execute common tests in addition to specific ones.",
         examples=[False],
+    )
+
+    search_strategy: SearchStrategyEnum = Field(
+        default=SearchStrategyEnum.NAIVE,
+        description="Batch search strategy: 'naive' or 'three_point'.",
+        examples=["three_point"],
+    )
+    parallel_stages: list[str] = Field(
+        default_factory=list,
+        description=("List of stage names to run in parallel: 'pre', 'setup', 'test', 'post'."),
+        examples=[["setup", "test"]],
+    )
+    max_workers: int | None = Field(
+        default=None,
+        description="Max number of worker processes for parallel stages (0 = auto cpu_count).",
+        examples=[4],
     )
 
     @model_validator(mode="after")
@@ -149,7 +192,7 @@ class RegressionDetectionDefinition(BaseModel):
     )
     min_commits_after: int = Field(
         default=0,
-        description="Minimum number of commits to include after a candidate commit for confirmation.",
+        description=("Minimum number of commits to include after a candidate commit for confirmation."),
         examples=[0],
     )
 
@@ -157,7 +200,11 @@ class RegressionDetectionDefinition(BaseModel):
 class PipelineConfig(BaseModel):
     """Configuration model for the entire pipeline."""
 
-    config_version: str = Field(default="1.0.0", description="Version of the configuration schema.", examples=["1.0.0"])
+    config_version: str = Field(
+        default="1.0.0",
+        description="Version of the configuration schema.",
+        examples=["1.0.0"],
+    )
     repo: RepositoryDefinition = Field(..., description="Repository configuration details.")
     execution_plan: ExecutionPlanDefinition = Field(..., description="Execution plan for running tests or benchmarks.")
     limits: LimitsDefinition = Field(
@@ -192,6 +239,6 @@ class PipelineConfig(BaseModel):
     )
     timeout: int = Field(
         default=120,
-        description="Timeout for executions.",
+        description="Timeout for executions (seconds).",
         examples=[120],
     )
