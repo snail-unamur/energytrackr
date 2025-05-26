@@ -61,6 +61,8 @@ class PrunedBinarySegmentationStrategy(BatchStrategy):
 
         self._measured_commits: dict[str, list[float]] = {}
 
+        self._initial_zone_size: int = 50
+
     @classmethod
     def from_plan(cls, plan: Any) -> PrunedBinarySegmentationStrategy:
         return cls(
@@ -77,8 +79,14 @@ class PrunedBinarySegmentationStrategy(BatchStrategy):
         # Base case
         if not self._pending_regions:
             self._commits = commits
-            self._pending_regions = [(0, len(commits) - 1)]
-            tmp = [[commits[0], commits[-1]] * self._num_runs]  # Return the first and last commit as a single batch
+            regions = []
+            for start in range(0, len(self._commits), self._initial_zone_size):
+                end = min(start + self._initial_zone_size - 1, len(self._commits) - 1)
+                self._pending_regions.append((start, end))
+                regions.append(self._commits[start])
+                regions.append(self._commits[end])
+            logger.debug("Initial regions: %s", self._pending_regions)
+            tmp = [regions * self._num_runs]
         # Return the regions to explore
         else:
             regions = []
@@ -235,8 +243,8 @@ class PrunedBinarySegmentationStrategy(BatchStrategy):
 
         logger.info("Summary metrics:")
         logger.info("  Iterations explored : %d", self._iteration)
-        logger.info("  Regions explored    : %d", self._explored_regions_count)
-        logger.info("  Unique commits tested: %d", len(self._tested_commits))
+        # logger.info("  Regions explored    : %d", self._explored_regions_count)
+        logger.info("  Unique commits tested: %d", len(self._measured_commits))
 
     def get_search_space(self, commits: list[git.Commit]) -> int:
         return 1 if self._min_region <= 0 else len(commits) // self._min_region + 1
