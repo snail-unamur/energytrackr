@@ -38,7 +38,7 @@ class SearchStrategyEnum(StrEnum):
     """
 
     NAIVE = "naive"
-    THREE_POINT = "three_point"
+    PRUNED_BINARY_SEGMENTATION = "pruned_binary_segmentation"
 
 
 class RepositoryDefinition(BaseModel):

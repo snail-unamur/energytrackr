@@ -1,6 +1,7 @@
 """Git utility functions for cloning repositories and gathering commits."""
 
 import os
+from pathlib import Path
 from typing import Any
 
 from git import Commit, Repo
@@ -9,7 +10,7 @@ from energytrackr.config.config_store import Config
 from energytrackr.utils.logger import logger
 
 
-def clone_or_open_repo(repo_path: str, repo_url: str, clone_options: list[str] | None = None) -> Repo:
+def clone_or_open_repo(repo_path: Path, repo_url: str, clone_options: list[str] | None = None) -> Repo:
     """Clone a Git repository from a URL or open an existing repository from a local path.
 
     Args:

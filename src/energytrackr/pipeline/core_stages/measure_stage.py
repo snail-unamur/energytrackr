@@ -2,9 +2,9 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from energytrackr.config.config_store import Config
+from energytrackr.pipeline.context import Context
 from energytrackr.pipeline.stage_interface import PipelineStage
 from energytrackr.utils.logger import logger
 from energytrackr.utils.utils import run_command
@@ -21,7 +21,7 @@ class MeasureEnergyStage(PipelineStage):
         """
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    def run(self, context: dict[str, Any]) -> None:
+    def run(self, context: Context) -> None:
         """Runs the energy measurement and appends the data to a results file.
 
         If the build failed, or if there is no test command, or if the perf command fails,
@@ -63,7 +63,7 @@ class MeasureEnergyStage(PipelineStage):
                 return
 
         # Log to CSV
-        commit_hash = context["commit"].hexsha
+        commit_hash = context["commit"]
         repo_path = context["repo_path"]
         assert repo_path is not None, "Repository path is not set in the configuration."
         output_file = Path(repo_path).parent.parent / "energy_measurements" / f"energy_results_{self.timestamp}.csv"

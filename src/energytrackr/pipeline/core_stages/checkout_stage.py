@@ -1,10 +1,10 @@
 """Module to checkout a specific commit in a git repository."""
 
 import os
-from typing import Any
 
 import git
 
+from energytrackr.pipeline.context import Context
 from energytrackr.pipeline.stage_interface import PipelineStage
 from energytrackr.utils.logger import logger
 
@@ -12,7 +12,7 @@ from energytrackr.utils.logger import logger
 class CheckoutStage(PipelineStage):
     """Checks out the commit specified in context["current_commit"]."""
 
-    def run(self, context: dict[str, Any]) -> None:  # noqa: PLR6301
+    def run(self, context: Context) -> None:  # noqa: PLR6301
         """Checks out the commit specified in context["current_commit"].
 
         Retrieves the commit specified in context["current_commit"] and the repository path
@@ -21,8 +21,7 @@ class CheckoutStage(PipelineStage):
         context["abort_pipeline"] = True.
 
         Args:
-            context: A dictionary containing the current execution context,
-                    including the commit to checkout.
+            context: The pipeline context containing at least a "current_commit" key with the commit hash to checkout.
         """
         commit: str = context["commit"]
         logger.info("Repo path: %s_%s", context.get("repo_path"), commit, context=context)

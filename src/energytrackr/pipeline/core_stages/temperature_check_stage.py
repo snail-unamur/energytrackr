@@ -1,9 +1,9 @@
 """Stage to check CPU temperature before proceeding with the pipeline."""
 
 import time
-from typing import Any
 
 from energytrackr.config.config_store import Config
+from energytrackr.pipeline.context import Context
 from energytrackr.pipeline.stage_interface import PipelineStage
 from energytrackr.utils.logger import logger
 
@@ -11,12 +11,12 @@ from energytrackr.utils.logger import logger
 class TemperatureCheckStage(PipelineStage):
     """Ensures that the CPU is not too hot before starting the next stage."""
 
-    def run(self, context: dict[str, Any]) -> None:  # noqa: ARG002
+    def run(self, context: Context) -> None:  # noqa: ARG002
         """Monitors the CPU temperature and waits until it is below a safe limit before proceeding.
 
         Args:
             self (TemperatureCheckStage): The instance of the stage.
-            context (dict): The shared context dictionary for the pipeline.
+            context (Context): The pipeline context for the stage.
 
         The function repeatedly checks the CPU temperature by reading from
         the thermal file specified in the configuration. If the temperature is

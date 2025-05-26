@@ -1,8 +1,7 @@
 """Module to run pre-build commands (e.g., setting up environment)."""
 
-from typing import Any
-
 from energytrackr.config.config_store import Config
+from energytrackr.pipeline.context import Context
 from energytrackr.pipeline.stage_interface import PipelineStage
 from energytrackr.utils.logger import logger
 from energytrackr.utils.utils import run_command
@@ -14,7 +13,7 @@ class PreBuildStage(PipelineStage):
     Optionally only runs if certain files changed, etc.
     """
 
-    def run(self, context: dict[str, Any]) -> None:  # noqa: PLR6301
+    def run(self, context: Context) -> None:  # noqa: PLR6301
         """Executes pre-build commands as defined in the configuration.
 
         This method retrieves a pre-build command from the configuration and executes it
@@ -25,8 +24,7 @@ class PreBuildStage(PipelineStage):
         If the pre-build command fails and failures are not ignored, the pipeline is aborted.
 
         Args:
-            context: A dictionary containing the current execution context, including flags
-                    for build failure and pipeline abortion.
+            context: The pipeline context for the stage, which should include the repository path.
         """
         config = Config.get_config()
         if not (pre_cmd := config.execution_plan.pre_command):

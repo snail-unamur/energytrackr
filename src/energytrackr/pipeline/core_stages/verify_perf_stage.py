@@ -1,8 +1,7 @@
 """Module to check if user is allowed to use perf without sudo."""
 
-from typing import Any
-
 from energytrackr.config.config_store import Config
+from energytrackr.pipeline.context import Context
 from energytrackr.pipeline.stage_interface import PipelineStage
 from energytrackr.utils.logger import logger
 from energytrackr.utils.utils import run_command
@@ -14,11 +13,11 @@ class VerifyPerfStage(PipelineStage):
     Optionally only runs if certain files changed, etc.
     """
 
-    def run(self, context: dict[str, Any]) -> None:  # noqa: PLR6301
+    def run(self, context: Context) -> None:  # noqa: PLR6301
         """Check if user is allowed to use perf without sudo.
 
         Args:
-            context (dict[str, Any]): The pipeline context.
+            context (Context): The pipeline context.
             Expected keys:
                 - "abort_pipeline": bool — indicates if the pipeline should be aborted.
         """

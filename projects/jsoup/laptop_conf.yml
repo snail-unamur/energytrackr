@@ -10,12 +10,12 @@ execution_plan:
     - mvn clean test-compile
   granularity: commits
   test_command: mvn surefire:test
-  num_runs: 15
+  num_runs: 3
   num_repeats: 1
   randomize_tasks: true
   batch_size: 10
-  num_commits: 100
-  #search_strategy: three_point
+  num_commits: 500
+  search_strategy: pruned_binary_segmentation
 
 limits:
   temperature_safe_limit: 65000
