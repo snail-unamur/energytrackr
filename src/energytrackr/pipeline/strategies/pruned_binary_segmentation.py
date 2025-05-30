@@ -13,6 +13,7 @@ Main flow:
 
 from __future__ import annotations
 
+import math
 import random
 from statistics import median
 from typing import Any, override
@@ -61,8 +62,6 @@ class PrunedBinarySegmentationStrategy(BatchStrategy):
 
         self._measured_commits: dict[str, list[float]] = {}
 
-        self._initial_zone_size: int = 50
-
     @classmethod
     def from_plan(cls, plan: Any) -> PrunedBinarySegmentationStrategy:
         return cls(
@@ -80,6 +79,7 @@ class PrunedBinarySegmentationStrategy(BatchStrategy):
         if not self._pending_regions:
             self._commits = commits
             regions = []
+            self._initial_zone_size = max(5, math.ceil(len(commits) / 10))
             for start in range(0, len(self._commits), self._initial_zone_size):
                 end = min(start + self._initial_zone_size - 1, len(self._commits) - 1)
                 self._pending_regions.append((start, end))
