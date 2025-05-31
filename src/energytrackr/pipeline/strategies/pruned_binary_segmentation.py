@@ -157,21 +157,20 @@ class PrunedBinarySegmentationStrategy(BatchStrategy):
             # Compute percentage change
             pct_change = ((median_right - median_left) / median_left) * 100.0 if median_left != 0 else float("inf")
 
-            # Perform statistical test
-            p_value = 1.0
+            # Perform Mann-Whitney U statistical test
+            p_value_mw = 1.0
             if len(left_commit_results) > 1 and len(right_commit_results) > 1:
                 try:
-                    _, p_value = mannwhitneyu(left_commit_results, right_commit_results, alternative="two-sided")
+                    _, p_value_mw = mannwhitneyu(left_commit_results, right_commit_results, alternative="two-sided")
                 except ValueError as e:
                     logger.error("Mann-Whitney U test failed for %s vs %s: %s", left_commit.hexsha, right_commit.hexsha, e)
-
             # Check if result is a regression
-            if p_value < self._p_threshold and abs(pct_change) >= self._percent_threshold:
+            if p_value_mw < self._p_threshold and abs(pct_change) >= self._percent_threshold:
                 logger.debug(
                     "Region (%s, %s) detected as regression: p=%.4f, Δ=%.2f%%",
                     left_commit.hexsha[:8],
                     right_commit.hexsha[:8],
-                    p_value,
+                    p_value_mw,
                     pct_change,
                 )
                 # Check if region can be split further
@@ -197,28 +196,14 @@ class PrunedBinarySegmentationStrategy(BatchStrategy):
                         self._min_region,
                     )
                     # Record as a leaf regression
-                    self._leaf_regressions.append((left, right, median_left, median_right, pct_change, p_value))
-            elif p_value >= self._p_threshold:
-                logger.debug(
-                    "Region (%s, %s) p-value too high, retrying: p=%.4f, Δ=%.2f%%",
-                    left_commit.hexsha[:8],
-                    right_commit.hexsha[:8],
-                    p_value,
-                    pct_change,
-                )
-                # Retry if the p-value is too high
-                # First remove the commits from the measured set
-                self._measured_commits.pop(left_commit.hexsha, None)
-                self._measured_commits.pop(right_commit.hexsha, None)
-                # Add the region back to pending regions
-                next_pending_regions.append((left, right))
+                    self._leaf_regressions.append((left, right, median_left, median_right, pct_change, p_value_mw))
             else:
                 # Prune the region
                 logger.debug(
                     "Region (%s, %s) not a regression: p=%.4f, Δ=%.2f%%",
                     left_commit.hexsha[:8],
                     right_commit.hexsha[:8],
-                    p_value,
+                    p_value_mw,
                     pct_change,
                 )
         self._pending_regions = next_pending_regions
