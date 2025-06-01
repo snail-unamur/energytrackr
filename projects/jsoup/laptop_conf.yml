@@ -15,7 +15,7 @@ execution_plan:
   randomize_tasks: true
   batch_size: 10
   num_commits: 500
-  search_strategy: pruned_binary_segmentation
+  search_strategy: pruned_endpoint_segmentation
 
 limits:
   temperature_safe_limit: 65000

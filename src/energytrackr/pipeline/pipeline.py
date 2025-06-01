@@ -62,8 +62,8 @@ from energytrackr.pipeline.stage_interface import StageGroup
 # from energytrackr.pipeline.strategies.breadth_first import ThreePointStrategy  # noqa: F401  # pylint: disable=unused-import
 # from energytrackr.pipeline.strategies.divide_conquer import DivideConquerStrategy  # noqa: F401 # pylint: disable=unused-import
 from energytrackr.pipeline.strategies.naive import NaiveStrategy  # noqa: F401 # pylint: disable=unused-import
-from energytrackr.pipeline.strategies.pruned_binary_segmentation import (
-    PrunedBinarySegmentationStrategy,
+from energytrackr.pipeline.strategies.pruned_endpoint_segmentation import (
+    PrunedEndpointSegmentationStrategy,
 )  # noqa: F401 # pylint: disable=unused-import
 from energytrackr.pipeline.strategies.strategy_interface import (
     BatchStrategy,

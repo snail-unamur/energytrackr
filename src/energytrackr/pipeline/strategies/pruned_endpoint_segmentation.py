@@ -1,4 +1,4 @@
-"""PrunedBinarySegmentationStrategy.
+"""PrunedEndpointSegmentationStrategy.
 
 Efficient recursive region-based regression detection.
 - Only measures left/right endpoints of regions to minimize builds.
@@ -25,8 +25,8 @@ from energytrackr.pipeline.strategies.strategy_interface import BatchStrategy, r
 from energytrackr.utils.logger import logger
 
 
-@register_strategy("pruned_binary_segmentation")
-class PrunedBinarySegmentationStrategy(BatchStrategy):
+@register_strategy("pruned_endpoint_segmentation")
+class PrunedEndpointSegmentationStrategy(BatchStrategy):
     """Recursively detects regressions by comparing only region endpoints.
 
     Skips black-listed (build-failed) commits by using the nearest neighbor.
@@ -36,7 +36,7 @@ class PrunedBinarySegmentationStrategy(BatchStrategy):
         self,
         *,
         num_runs: int,
-        min_region: int = 3,
+        min_region: int = 2,
         p_threshold: float = 0.05,
         percent_threshold: float = 3.0,
         randomize: bool = False,
@@ -63,10 +63,10 @@ class PrunedBinarySegmentationStrategy(BatchStrategy):
         self._measured_commits: dict[str, list[float]] = {}
 
     @classmethod
-    def from_plan(cls, plan: Any) -> PrunedBinarySegmentationStrategy:
+    def from_plan(cls, plan: Any) -> PrunedEndpointSegmentationStrategy:
         return cls(
             num_runs=plan.num_runs,
-            min_region=getattr(plan, "pbs_min_region", 3),
+            min_region=getattr(plan, "pbs_min_region", 2),
             p_threshold=getattr(plan, "pbs_p_threshold", 1),
             percent_threshold=getattr(plan, "pbs_percent_threshold", 3.0),
             randomize=plan.randomize_tasks,
@@ -80,12 +80,16 @@ class PrunedBinarySegmentationStrategy(BatchStrategy):
             self._commits = commits
             regions = []
             self._initial_zone_size = max(5, math.ceil(len(commits) / 10))
-            for start in range(0, len(self._commits), self._initial_zone_size):
+            for start in range(0, len(self._commits) - 1, self._initial_zone_size - 1):
                 end = min(start + self._initial_zone_size - 1, len(self._commits) - 1)
                 self._pending_regions.append((start, end))
                 regions.append(self._commits[start])
                 regions.append(self._commits[end])
+
             logger.debug("Initial regions: %s", self._pending_regions)
+            regions = list(set(regions))  # Deduplicate regions
+            logger.debug("Deduplicated regions: %s", regions)
+
             tmp = [regions * self._num_runs]
         # Return the regions to explore
         else:
@@ -99,9 +103,11 @@ class PrunedBinarySegmentationStrategy(BatchStrategy):
                     regions.append(commits[right])
                 else:
                     logger.debug("Skipping right endpoint %s, already measured", commits[right].hexsha)
+            regions = list(set(regions))  # Deduplicate regions
             tmp = [regions * self._num_runs]  # Return the endpoints of each region
         if self._randomize:
             random.shuffle(tmp)
+        logger.debug("tmp: %s", tmp)
         return tmp
 
     @override
@@ -185,7 +191,7 @@ class PrunedBinarySegmentationStrategy(BatchStrategy):
                     # Split the region into two halves
                     mid = (left + right) // 2
                     next_pending_regions.append((left, mid))
-                    next_pending_regions.append((mid + 1, right))
+                    next_pending_regions.append((mid, right))
 
                 else:
                     logger.debug(
