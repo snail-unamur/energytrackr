@@ -58,7 +58,7 @@ class BoxplotComparison(ComparisonBase):
         fig = figure(
             x_range=FactorRange(*[init1, init2]),
             sizing_mode="stretch_width",
-            tools="pan,box_zoom,reset,save,wheel_zoom,hover",
+            tools="pan,box_zoom,reset,save,wheel_zoom",
             toolbar_location="above",
             title=f"Distribution Boxplot: {ctx.energy_fields[0]}",
             x_axis_label="Commit (short hash)",
