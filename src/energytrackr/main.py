@@ -1,7 +1,7 @@
 """Energy Pipeline CLI."""
 
+from energytrackr.commands.args_parser import parse_args
 from energytrackr.commands.dispatcher import handle_command
-from energytrackr.utils.args_parser import parse_args
 
 
 def main() -> None:

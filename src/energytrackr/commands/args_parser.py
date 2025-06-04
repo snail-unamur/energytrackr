@@ -26,5 +26,6 @@ def parse_args() -> argparse.Namespace:
     plot_parser = subparsers.add_parser("plot", help="Plot a result file")
     plot_parser.add_argument("file", help="Path to the result file to plot")
     plot_parser.add_argument("repo_path", help="Path to the repository")
+    plot_parser.add_argument("--config", default="plot.yml", help="Path to config file")
 
     return parser.parse_args()

@@ -259,7 +259,7 @@ def plot(
     html_content = _render_page_sections(ctx, settings.energytrackr.plot.page)
 
     # Write out report
-    output_file = csv_path.with_suffix(".plot.html")
+    output_file = csv_path.with_suffix(".html")
     output_file.write_text(html_content, encoding="utf-8")
     logger.info("✔ Report exported to %s", output_file)
 
