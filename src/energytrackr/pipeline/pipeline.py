@@ -23,11 +23,9 @@ from __future__ import annotations
 import os
 import shutil
 from pathlib import Path
-from turtle import pos
 from typing import Final
 
 from git import Commit, GitError, Repo
-from numpy import test
 from rich.progress import (
     BarColumn,
     Progress,
