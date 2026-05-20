@@ -104,15 +104,100 @@ load_configs() {
 # ---------- misc helpers ------------------------------------------------------
 is_root() { [[ $(id -u) -eq 0 ]]; }
 
+# ---------- bootloader detection ----------------------------------------------
+detect_bootloader() {
+    if bootctl is-installed &>/dev/null; then
+        BOOTLOADER=systemd-boot
+    elif [[ -f /etc/default/grub ]]; then
+        BOOTLOADER=grub
+    else
+        warn "Unsupported bootloader: neither systemd-boot nor GRUB detected"
+        exit 1
+    fi
+    log "Detected bootloader: $BOOTLOADER"
+}
+
+# ---------- GRUB helpers ------------------------------------------------------
+grub_update() {
+    if command -v update-grub &>/dev/null; then
+        update-grub
+    elif command -v grub-mkconfig &>/dev/null; then
+        grub-mkconfig -o /boot/grub/grub.cfg
+    elif command -v grub2-mkconfig &>/dev/null; then
+        grub2-mkconfig -o /boot/grub2/grub.cfg
+    else
+        warn "No GRUB regeneration tool found (update-grub / grub-mkconfig / grub2-mkconfig)"
+        exit 1
+    fi
+}
+
+grub_first_setup() {
+    local grub_file=/etc/default/grub
+    local backup=/etc/default/grub.energy-backup
+    [[ -f $backup ]] && {
+        warn "Backup $backup already exists. Did you already run first-setup?"
+        exit 1
+    }
+    cp "$grub_file" "$backup"
+    log "Backed up $grub_file → $backup"
+    sed -i 's/\(GRUB_CMDLINE_LINUX_DEFAULT="[^"]*\)"/\1 intel_pstate=disable cpuidle.off=1 idle=poll"/' "$grub_file"
+    log "Added kernel parameters to $grub_file"
+    grub_update
+    log "GRUB configuration updated"
+}
+
+grub_revert_first_setup() {
+    local grub_file=/etc/default/grub
+    local backup=/etc/default/grub.energy-backup
+    [[ -f $backup ]] || {
+        warn "Backup $backup not found. Was first-setup run?"
+        exit 1
+    }
+    cp "$backup" "$grub_file"
+    log "Restored $grub_file from $backup"
+    grub_update
+    rm -f "$backup"
+    log "Removed backup $backup"
+}
+
+# ---------- systemd-boot helpers ----------------------------------------------
+systemd_boot_first_setup() {
+    local custom
+    custom=$(prepare_custom_entry)
+    for p in intel_pstate=disable cpuidle.off=1 idle=poll; do
+        modify_param add "$p" "$custom"
+    done
+    bootctl update
+    log "Created boot entry: $(basename "$custom")"
+}
+
+systemd_boot_revert_first_setup() {
+    local orig custom
+    orig=$(get_boot_entry)
+    custom="/boot/loader/entries/$(basename "$orig" .conf)-energy.conf"
+    [[ -f $custom ]] && {
+        rm -f "$custom"
+        bootctl update
+        log "Removed $(basename "$custom")"
+    }
+}
+
 ensure_user_config() {
-    local user_cfg="$HOME/.config/energy-measurement.conf"
+    local user_home
+    if [[ $EUID -eq 0 && -n ${SUDO_USER:-} && $SUDO_USER != "root" ]]; then
+        user_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        user_home="$HOME"
+    fi
+    local user_cfg="$user_home/.config/energy-measurement.conf"
     [[ -f $user_cfg ]] && {
         log "User config exists: $user_cfg"
         return
     }
-    local default_cfg="$(dirname "$0")/energy-measurement.conf"
+    local default_cfg
+    default_cfg="$(dirname "$0")/energy-measurement.conf"
     if [[ -f $default_cfg ]]; then
-        mkdir -p "$HOME/.config"
+        mkdir -p "$user_home/.config"
         cp "$default_cfg" "$user_cfg"
         log "Copied default config to $user_cfg"
     else
@@ -122,7 +207,7 @@ ensure_user_config() {
 
 get_boot_entry() {
     local entry
-    entry=$(find /boot/loader/entries -name '*.conf' -print -quit)
+    entry=$(find /boot/loader/entries -name '*.conf' ! -name '*-energy.conf' -print -quit)
     [[ $entry ]] || {
         warn "systemd-boot entry not found"
         exit 1
@@ -131,9 +216,10 @@ get_boot_entry() {
 }
 
 prepare_custom_entry() {
-    local orig=$(get_boot_entry)
-    local base=$(basename "$orig" .conf)
-    local custom="/boot/loader/entries/${base}-energy.conf"
+    local orig base custom
+    orig=$(get_boot_entry)
+    base=$(basename "$orig" .conf)
+    custom="/boot/loader/entries/${base}-energy.conf"
     [[ -e $custom ]] || {
         cp "$orig" "$custom"
         log "Created $custom"
@@ -272,15 +358,14 @@ main() {
         exit 1
     }
     load_configs
+    detect_bootloader
     case "${1:-}" in
     first-setup)
         ensure_user_config
-        local custom=$(prepare_custom_entry)
-        for p in intel_pstate=disable cpuidle.off=1 idle=poll; do
-            modify_param add "$p" "$custom"
-        done
-        bootctl update
-        log "Created boot entry: $(basename "$custom")"
+        case "$BOOTLOADER" in
+            systemd-boot) systemd_boot_first_setup ;;
+            grub)         grub_first_setup ;;
+        esac
         ;;
     setup)
         log "Verifying kernel parameters…"
@@ -306,13 +391,10 @@ main() {
         log "Measurement mode disabled"
         ;;
     revert-first-setup)
-        local orig=$(get_boot_entry)
-        local custom="/boot/loader/entries/$(basename "$orig" .conf)-energy.conf"
-        [[ -f $custom ]] && {
-            rm -f "$custom"
-            bootctl update
-            log "Removed $(basename "$custom")"
-        }
+        case "$BOOTLOADER" in
+            systemd-boot) systemd_boot_revert_first_setup ;;
+            grub)         grub_revert_first_setup ;;
+        esac
         ;;
     *)
         echo "Usage: $0 {first-setup|setup|revert-setup|revert-first-setup}" >&2
