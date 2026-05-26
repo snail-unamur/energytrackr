@@ -43,7 +43,7 @@ pre_test_stages: list[PipelineStage] = [
     CopyDirectoryStage(),
     SetDirectoryStage(),
     CheckoutStage(),
-    # JavaSetupStage(),
+    JavaSetupStage(),
     BuildStage(),
 ]
 
