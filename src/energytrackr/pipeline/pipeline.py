@@ -50,7 +50,7 @@ pre_test_stages: list[PipelineStage] = [
 batch_stages: list[PipelineStage] = [
     TemperatureCheckStage(),
     SetDirectoryStage(),
-    # JavaSetupStage(),
+    JavaSetupStage(),
     MeasureEnergyStage(),
     PostTestStage(),
 ]

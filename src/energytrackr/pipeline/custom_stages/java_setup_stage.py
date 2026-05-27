@@ -1,5 +1,6 @@
 """JavaSetupStage: A specialized stage for setting up Java environment variables."""
 
+import glob
 import os
 import xml.etree.ElementTree as ET
 from typing import Any
@@ -69,7 +70,13 @@ class JavaSetupStage(PipelineStage):
         # If the version is less than 8, default to using Java 8.
         version_number = max(version_number, 8)
 
-        return f"/usr/lib/jvm/java-{version_number}-openjdk"
+        base = f"/usr/lib/jvm/java-{version_number}-openjdk"
+        # The installed directory may have an arch suffix (e.g. java-8-openjdk-amd64).
+        # Prefer an exact match, then fall back to the first glob hit.
+        if os.path.isdir(base):
+            return base
+        matches = sorted(glob.glob(f"{base}*"))
+        return matches[0] if matches else base
 
     @staticmethod
     def extract_java_version(pom_file: str, context: dict[str, Any]) -> str | None:  # noqa: C901
@@ -124,7 +131,16 @@ class JavaSetupStage(PipelineStage):
             logger.warning("Error building properties map: %s", e, context=context)
             properties_map = {}
 
-        # 5. Try the maven-compiler-plugin in the main build
+        # 5. Try maven.compiler.source/target/release shorthand properties
+        try:
+            java_version = JavaSetupStage._extract_from_maven_compiler_properties(properties_map)
+        except Exception as e:
+            logger.warning("Error extracting from maven.compiler.* properties: %s", e, context=context)
+            java_version = None
+        if java_version:
+            return java_version
+
+        # 6. Try the maven-compiler-plugin in the main build
         try:
             java_version = JavaSetupStage._extract_from_compiler_plugin(root, ns, properties_map)
         except Exception as e:
@@ -133,7 +149,7 @@ class JavaSetupStage(PipelineStage):
         if java_version:
             return java_version
 
-        # 6. Finally, check profiles for maven-compiler-plugin
+        # 7. Finally, check profiles for maven-compiler-plugin
         try:
             java_version = JavaSetupStage._extract_from_profiles(root, ns, properties_map)
         except Exception as e:
@@ -142,7 +158,7 @@ class JavaSetupStage(PipelineStage):
         if java_version:
             return java_version
 
-        # 7. Nothing found
+        # 8. Nothing found
         logger.error("Java version not found in pom.xml: %s", pom_file, context=context)
         return None
 
@@ -202,6 +218,29 @@ class JavaSetupStage(PipelineStage):
                     tag: str = child.tag.split("}")[-1]
                     result[tag] = child.text.strip()
         return result
+
+    @staticmethod
+    def _extract_from_maven_compiler_properties(properties_map: dict[str, str]) -> str | None:
+        """Extracts the Java version from Maven shorthand compiler properties.
+
+        Maven allows configuring the compiler via properties directly in the
+        <properties> section without an explicit maven-compiler-plugin block:
+          <maven.compiler.release>17</maven.compiler.release>
+          <maven.compiler.source>1.8</maven.compiler.source>
+          <maven.compiler.target>1.8</maven.compiler.target>
+
+        Checks keys in priority order: release > source > target.
+
+        Args:
+            properties_map: A dictionary of properties extracted from the POM file.
+
+        Returns:
+            The Java version string if found, otherwise None.
+        """
+        for key in ("maven.compiler.release", "maven.compiler.source", "maven.compiler.target"):
+            if value := properties_map.get(key):
+                return value
+        return None
 
     @staticmethod
     def _extract_from_compiler_plugin(root: ET.Element, ns: dict[str, str], properties_map: dict[str, str]) -> str | None:
@@ -314,6 +353,8 @@ class JavaSetupStage(PipelineStage):
             The resolved Java version string if found, otherwise None.
         """
         for tag in ("release", "source", "target"):
+            logger.info("ns = %s, looking for tag: %s", ns, tag, context=None)
+            logger.info("ns = %s, looking for tag: %s", ns, tag, context=None)
             version_el = configuration.find(f"ns:{tag}", ns)
             if version_el is not None and version_el.text:
                 version = version_el.text.strip()
