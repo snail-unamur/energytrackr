@@ -21,7 +21,6 @@ from energytrackr.config.config_model import PipelineConfig
 from energytrackr.config.config_store import Config
 from energytrackr.config.loader import load_pipeline_config
 from energytrackr.pipeline.core_stages.build_stage import BuildStage
-from energytrackr.pipeline.core_stages.test_verify_stage import TestVerifyStage
 from energytrackr.pipeline.core_stages.checkout_stage import CheckoutStage
 from energytrackr.pipeline.core_stages.copy_directory_stage import CopyDirectoryStage
 from energytrackr.pipeline.core_stages.filter_and_regression_stage import FilterAndRegressionStage
@@ -46,7 +45,6 @@ pre_test_stages: list[PipelineStage] = [
     CheckoutStage(),
     JavaSetupStage(),
     BuildStage(),
-    TestVerifyStage(),
 ]
 
 batch_stages: list[PipelineStage] = [
