@@ -43,14 +43,14 @@ pre_test_stages: list[PipelineStage] = [
     CopyDirectoryStage(),
     SetDirectoryStage(),
     CheckoutStage(),
-    # JavaSetupStage(),
+    JavaSetupStage(),
     BuildStage(),
 ]
 
 batch_stages: list[PipelineStage] = [
     TemperatureCheckStage(),
     SetDirectoryStage(),
-    # JavaSetupStage(),
+    JavaSetupStage(),
     MeasureEnergyStage(),
     PostTestStage(),
 ]

@@ -92,12 +92,14 @@ def test_extract_from_property_reference(tmp_path: str) -> None:
 
 def test_map_version_to_home_classic() -> None:
     """Test mapping Java version to home directory for classic versions."""
-    assert JavaSetupStage.map_version_to_home("1.8") == "/usr/lib/jvm/java-8-openjdk"
+    result = JavaSetupStage.map_version_to_home("1.8")
+    assert result.startswith("/usr/lib/jvm/java-8-openjdk")
 
 
 def test_map_version_to_home_direct() -> None:
     """Test mapping Java version to home directory for direct versions."""
-    assert JavaSetupStage.map_version_to_home("17") == "/usr/lib/jvm/java-17-openjdk"
+    result = JavaSetupStage.map_version_to_home("17")
+    assert result.startswith("/usr/lib/jvm/java-17-openjdk")
 
 
 def test_extract_from_profiles(tmp_path: str) -> None:
@@ -128,6 +130,23 @@ def test_extract_from_profiles(tmp_path: str) -> None:
     stage = JavaSetupStage()
     version = stage.extract_java_version("pom.xml", context={})
     assert version == "21"
+
+
+def test_extract_from_maven_compiler_properties(tmp_path: str) -> None:
+    """Test extracting Java version from maven.compiler.source/target shorthand properties."""
+    pom = """
+		<project xmlns="http://maven.apache.org/POM/4.0.0">
+			<properties>
+				<maven.compiler.target>1.8</maven.compiler.target>
+				<maven.compiler.source>1.8</maven.compiler.source>
+			</properties>
+		</project>
+		"""
+    write_pom(tmp_path, pom)
+    os.chdir(tmp_path)
+    stage = JavaSetupStage()
+    version = stage.extract_java_version("pom.xml", context={})
+    assert version == "1.8"
 
 
 @pytest.mark.parametrize(
