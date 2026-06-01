@@ -21,7 +21,6 @@ from energytrackr.config.config_model import PipelineConfig
 from energytrackr.config.config_store import Config
 from energytrackr.config.loader import load_pipeline_config
 from energytrackr.pipeline.core_stages.build_stage import BuildStage
-from energytrackr.pipeline.core_stages.test_verify_stage import TestVerifyStage
 from energytrackr.pipeline.core_stages.checkout_stage import CheckoutStage
 from energytrackr.pipeline.core_stages.copy_directory_stage import CopyDirectoryStage
 from energytrackr.pipeline.core_stages.filter_and_regression_stage import FilterAndRegressionStage
@@ -46,7 +45,6 @@ pre_test_stages: list[PipelineStage] = [
     CheckoutStage(),
     JavaSetupStage(),
     BuildStage(),
-    TestVerifyStage(),
 ]
 
 batch_stages: list[PipelineStage] = [
@@ -444,10 +442,10 @@ class Pipeline:
 
                     log_context_buffer(ctx)
                     if ctx.get("abort_pipeline"):
-                        logger.warning("Pre-test stage failed for commit %s, skipping.", sha)
-                        failed_commits.add(sha)
-                    elif ctx.get("build_failed"):
-                        logger.warning("Build or tests failed for commit %s, skipping.", sha)
+                        logger.warning("Aborting pipeline due to commit %s", sha)
+                        sys.exit(1)
+                    if ctx.get("build_failed"):
+                        logger.warning("Build failed for commit %s", sha)
                         failed_commits.add(sha)
 
                     desc = f"Pre batch stages (failed: {len(failed_commits)})" if failed_commits else "Pre batch stages"
@@ -460,10 +458,10 @@ class Pipeline:
                 ctx = run_pre_test_stages_for_commit(sha, self.repo_path)
                 log_context_buffer(ctx)
                 if ctx.get("abort_pipeline"):
-                    logger.warning("Pre-test stage failed for commit %s, skipping.", sha)
-                    failed_commits.add(sha)
-                elif ctx.get("build_failed"):
-                    logger.warning("Build or tests failed for commit %s, skipping.", sha)
+                    logger.warning("Aborting pipeline due to commit %s", sha)
+                    sys.exit(1)
+                if ctx.get("build_failed"):
+                    logger.warning("Build failed for commit %s", sha)
                     failed_commits.add(sha)
 
                 desc = f"Pre batch stages (failed: {len(failed_commits)})" if failed_commits else "Pre batch stages"
