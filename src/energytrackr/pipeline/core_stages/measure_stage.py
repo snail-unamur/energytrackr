@@ -51,6 +51,8 @@ class MeasureEnergyStage(PipelineStage):
             logger.warning("Ignoring temperature read failure; continuing anyway.", context=context)
             temp_before = ""
 
+        logger.info("Temperature before measurement: %s", temp_before, context=context)
+
         perf_command = f"perf stat -e power/energy-pkg/,power/energy-ram/ {test_cmd}"
 
         logger.info("Measuring energy with: %s", perf_command, context=context)
@@ -88,6 +90,8 @@ class MeasureEnergyStage(PipelineStage):
             logger.warning("Ignoring temperature read failure; continuing anyway.", context=context)
             temp_after = ""
 
+        logger.info("Temperature after measurement: %s", temp_after, context=context)
+
         # Log to CSV
         commit_hash = context["commit"].hexsha
         repo_path = context["repo_path"]
@@ -101,7 +105,7 @@ class MeasureEnergyStage(PipelineStage):
                 fh.write("commit,energy-pkg,energy-ram,seconds,temp_before,temp_after\n")
             fh.write(
                 f"{commit_hash},{perf_values['power/energy-pkg/']},{perf_values['power/energy-ram/']},"
-                f"{perf_values['seconds time elapsed']},{temp_before},{temp_after}\n"
+                f"{perf_values['seconds time elapsed']},{temp_before},{temp_after}\n",
             )
 
         logger.info("Appended energy data to %s", output_file, context=context)

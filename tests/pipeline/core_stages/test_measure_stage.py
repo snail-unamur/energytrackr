@@ -62,8 +62,11 @@ PERF_OUTPUT = "42.00 power/energy-pkg/\n5.00 power/energy-ram/\n1.23 seconds tim
 @patch("energytrackr.pipeline.core_stages.measure_stage.read_cpu_temp")
 @patch("energytrackr.pipeline.core_stages.measure_stage.run_command")
 def test_measure_energy_success(
-    mock_run: MagicMock, mock_temp: MagicMock, dummy_context: dict[str, str], mock_config: SimpleNamespace
-) -> None:  # noqa: ARG001
+    mock_run: MagicMock,
+    mock_temp: MagicMock,
+    dummy_context: dict[str, str],
+    mock_config: SimpleNamespace,
+) -> None:
     """Test the MeasureEnergyStage with a successful run."""
     mock_run.return_value = SimpleNamespace(returncode=0, stdout=PERF_OUTPUT, stderr="")
     mock_temp.side_effect = [55000, 57000]
