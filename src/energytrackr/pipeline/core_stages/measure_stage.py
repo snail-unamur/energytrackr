@@ -40,7 +40,7 @@ class MeasureEnergyStage(PipelineStage):
             logger.info("Skipping energy measurement because no test command is provided.", context=context)
             return
 
-        perf_command = f"perf stat -e power/energy-pkg/ {test_cmd}"
+        perf_command = f"perf stat -e power/energy-pkg/,power/energy-ram/ {test_cmd}"
 
         logger.info("Measuring energy with: %s", perf_command, context=context)
         result = run_command(perf_command, context=context)
@@ -55,12 +55,19 @@ class MeasureEnergyStage(PipelineStage):
 
         # Extract the reading from perf output
         combined_output = result.stdout + "\n" + result.stderr
+        logger.info("Perf output:\n%s", combined_output, context=context)
 
-        if (energy_pkg := self.extract_energy_value(combined_output, "power/energy-pkg/")) is None:
-            logger.warning("No energy data found in perf output.", context=context)
-            if not config.execution_plan.ignore_failures:
-                context["abort_pipeline"] = True
-                return
+        perf_events = ["power/energy-pkg/", "power/energy-ram/", "seconds time elapsed"]
+        perf_values = {}
+        for event in perf_events:
+            if (value := self.extract_perf_value(combined_output, event)) is None:
+                logger.warning("No energy data found in perf output for event: %s", event, context=context)
+                if not config.execution_plan.ignore_failures:
+                    context["abort_pipeline"] = True
+                    return
+            logger.info("Extracted value %s for event %s", value, event, context=context)
+            perf_values[event] = value
+        logger.info("Extracted perf values: %s", perf_values, context=context)
 
         # Log to CSV
         commit_hash = context["commit"].hexsha
@@ -70,12 +77,12 @@ class MeasureEnergyStage(PipelineStage):
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         with output_file.open("a") as fh:
-            fh.write(f"{commit_hash},{energy_pkg}\n")
+            fh.write(f"{commit_hash},{perf_values['power/energy-pkg/']},{perf_values['power/energy-ram/']},{perf_values['seconds time elapsed']}\n")
 
         logger.info("Appended energy data to %s", output_file, context=context)
 
     @staticmethod
-    def extract_energy_value(perf_output: str, event_name: str) -> str | None:
+    def extract_perf_value(perf_output: str, event_name: str) -> str | None:
         """Extracts the value of the specified event from perf output.
 
         Args:
