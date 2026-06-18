@@ -55,7 +55,6 @@ class MeasureEnergyStage(PipelineStage):
 
         # Extract the reading from perf output
         combined_output = result.stdout + "\n" + result.stderr
-        logger.info("Perf output:\n%s", combined_output, context=context)
 
         perf_events = ["power/energy-pkg/", "power/energy-ram/", "seconds time elapsed"]
         perf_values = {}
@@ -65,9 +64,7 @@ class MeasureEnergyStage(PipelineStage):
                 if not config.execution_plan.ignore_failures:
                     context["abort_pipeline"] = True
                     return
-            logger.info("Extracted value %s for event %s", value, event, context=context)
             perf_values[event] = value
-        logger.info("Extracted perf values: %s", perf_values, context=context)
 
         # Log to CSV
         commit_hash = context["commit"].hexsha
