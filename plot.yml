@@ -19,7 +19,8 @@ energytrackr:
     transforms:
       - module: energytrackr.plot.builtin_data_transforms.load_csv:LoadCSV
         params:
-          csv_columns: ["commit", "energy-pkg", "energy-core"]
+          has_header: true
+          csv_columns: ["commit", "energy-pkg", "energy-ram", "seconds", "temp_before", "temp_after"]
       - module: energytrackr.plot.builtin_data_transforms.filter_outliers:FilterOutliers
         params:
           commit_col: commit

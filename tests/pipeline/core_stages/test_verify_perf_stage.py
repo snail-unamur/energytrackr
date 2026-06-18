@@ -1,10 +1,10 @@
 """Unit tests for the VerifyPerfStage class."""
 
-import yaml
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+import yaml
 
 from energytrackr.config.config_model import PipelineConfig
 from energytrackr.config.config_store import Config
