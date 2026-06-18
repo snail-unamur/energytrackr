@@ -17,6 +17,7 @@ class LoadCSVConfig:
     """Configuration for loading a CSV file into a DataFrame."""
 
     csv_columns: list[str] = field(default_factory=list)
+    has_header: bool = True
 
 
 class LoadCSV(Transform, Configurable[LoadCSVConfig]):
@@ -46,13 +47,16 @@ class LoadCSV(Transform, Configurable[LoadCSVConfig]):
             ctx (Context): The context object containing the input path and artefacts.
         """
         # 1) pick up default or override
-        if (columns := self.config.csv_columns) is None:
-            cfg = get_settings().energytrackr.data
-            # pydantic Sequence → Python list
-            columns = list(cfg.csv_columns)
-        logger.info("Loading CSV file '%s' with columns: %s", ctx.input_path, columns)
-        # 2) load into DataFrame
-        df = pd.read_csv(ctx.input_path, header=None, names=columns)
+        if self.config.has_header:
+            logger.info("Loading CSV file '%s' with header row", ctx.input_path)
+            df = pd.read_csv(ctx.input_path, header=0)
+        else:
+            columns = self.config.csv_columns
+            if not columns:
+                cfg = get_settings().energytrackr.data
+                columns = list(cfg.csv_columns)
+            logger.info("Loading CSV file '%s' with columns: %s", ctx.input_path, columns)
+            df = pd.read_csv(ctx.input_path, header=None, names=columns)
 
-        # 3) stash for downstream transforms
+        # 2) stash for downstream transforms
         ctx.artefacts["df"] = df

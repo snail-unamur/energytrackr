@@ -99,3 +99,20 @@ def get_local_env(env: Environment, template_path: str) -> Environment:
         if Path(template_path).parent == Path(env.loader.searchpath[0])  # type: ignore[attr-defined]
         else Environment(loader=FileSystemLoader(Path(template_path).parent), autoescape=select_autoescape())
     )
+
+
+def read_cpu_temp(path: str) -> int:
+    """Reads and parses the CPU temperature from a sysfs thermal file.
+
+    Args:
+        path (str): Path to the thermal file (e.g. /sys/class/thermal/thermal_zone0/temp).
+
+    Returns:
+        int: The CPU temperature in milli-degrees Celsius.
+
+    Raises:
+        OSError: If the file cannot be opened or read.
+        ValueError: If the file content cannot be parsed as an integer.
+    """
+    with open(path, encoding="utf-8") as f:
+        return int(f.read().strip())
