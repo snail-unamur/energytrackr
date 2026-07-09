@@ -1,9 +1,9 @@
 """Unit tests for the configuration module."""
 
-import yaml
 from pathlib import Path
 
 import pytest
+import yaml
 
 from energytrackr.config.config_model import ExecutionPlanDefinition, GranularityEnum, ModeEnum, PipelineConfig
 from energytrackr.config.config_store import Config

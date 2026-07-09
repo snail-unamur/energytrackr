@@ -40,8 +40,7 @@ All stages implement the same interface via an abstract base class:
 ```python
 class PipelineStage(ABC):
     @abstractmethod
-    def run(self, context: dict[str, Any]) -> None:
-        ...
+    def run(self, context: dict[str, Any]) -> None: ...
 ```
 
 ---

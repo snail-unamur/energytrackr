@@ -1,11 +1,11 @@
 """Test cases for the core functionality of the pipeline."""
 
 import argparse
-import yaml
 from pathlib import Path
 
 import git
 import pytest
+import yaml
 from git import Commit, Repo
 
 from energytrackr.config.config_store import Config

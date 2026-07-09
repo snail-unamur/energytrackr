@@ -6,6 +6,7 @@ from energytrackr.config.config_store import Config
 from energytrackr.pipeline.context import Context
 from energytrackr.pipeline.stage_interface import PipelineStage
 from energytrackr.utils.logger import logger
+from energytrackr.utils.utils import read_cpu_temp
 
 
 class TemperatureCheckStage(PipelineStage):
@@ -32,7 +33,7 @@ class TemperatureCheckStage(PipelineStage):
         while True:
             # Only this single statement is inside the try
             try:
-                temp = self._read_cpu_temp(temp_file)
+                temp = read_cpu_temp(temp_file)
             except (OSError, ValueError) as e:
                 logger.warning("Could not read or parse temperature (%s). Proceeding anyway.", e)
                 break
@@ -43,17 +44,3 @@ class TemperatureCheckStage(PipelineStage):
                 break
             logger.warning("CPU too hot (%d), waiting...", temp)
             time.sleep(2)
-
-    @staticmethod
-    def _read_cpu_temp(path: str) -> int:
-        """Reads and parses the CPU temperature from a thermal file.
-
-        Args:
-            path (str): Path to the thermal file.
-
-        Returns:
-            int: The CPU temperature in milli-degrees Celsius.
-        """
-        with open(path, encoding="utf-8") as f:
-            # strip() + int() kept together so failure raises ValueError
-            return int(f.read().strip())

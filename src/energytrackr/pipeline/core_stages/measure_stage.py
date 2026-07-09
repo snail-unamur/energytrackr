@@ -7,7 +7,7 @@ from energytrackr.config.config_store import Config
 from energytrackr.pipeline.context import Context
 from energytrackr.pipeline.stage_interface import PipelineStage
 from energytrackr.utils.logger import logger
-from energytrackr.utils.utils import run_command
+from energytrackr.utils.utils import read_cpu_temp, run_command
 
 
 class MeasureEnergyStage(PipelineStage):
@@ -40,7 +40,20 @@ class MeasureEnergyStage(PipelineStage):
             logger.info("Skipping energy measurement because no test command is provided.", context=context)
             return
 
-        perf_command = f"perf stat -e power/energy-pkg/ {test_cmd}"
+        # Read CPU temperature before measurement
+        try:
+            temp_before: int | str = read_cpu_temp(config.cpu_thermal_file)
+        except (OSError, ValueError) as e:
+            logger.error("Could not read CPU temperature before measurement: %s", e, context=context)
+            if not config.execution_plan.ignore_failures:
+                context["abort_pipeline"] = True
+                return
+            logger.warning("Ignoring temperature read failure; continuing anyway.", context=context)
+            temp_before = ""
+
+        logger.info("Temperature before measurement: %s", temp_before, context=context)
+
+        perf_command = f"perf stat -e power/energy-pkg/,power/energy-ram/ {test_cmd}"
 
         logger.info("Measuring energy with: %s", perf_command, context=context)
         result = run_command(perf_command, context=context)
@@ -56,11 +69,28 @@ class MeasureEnergyStage(PipelineStage):
         # Extract the reading from perf output
         combined_output = result.stdout + "\n" + result.stderr
 
-        if (energy_pkg := self.extract_energy_value(combined_output, "power/energy-pkg/")) is None:
-            logger.warning("No energy data found in perf output.", context=context)
+        perf_events = ["power/energy-pkg/", "power/energy-ram/", "seconds time elapsed"]
+        perf_values = {}
+        for event in perf_events:
+            if (value := self.extract_perf_value(combined_output, event)) is None:
+                logger.warning("No energy data found in perf output for event: %s", event, context=context)
+                if not config.execution_plan.ignore_failures:
+                    context["abort_pipeline"] = True
+                    return
+            perf_values[event] = value
+
+        # Read CPU temperature after measurement
+        try:
+            temp_after: int | str = read_cpu_temp(config.cpu_thermal_file)
+        except (OSError, ValueError) as e:
+            logger.error("Could not read CPU temperature after measurement: %s", e, context=context)
             if not config.execution_plan.ignore_failures:
                 context["abort_pipeline"] = True
                 return
+            logger.warning("Ignoring temperature read failure; continuing anyway.", context=context)
+            temp_after = ""
+
+        logger.info("Temperature after measurement: %s", temp_after, context=context)
 
         # Log to CSV
         commit_hash = context["commit"]
@@ -69,8 +99,14 @@ class MeasureEnergyStage(PipelineStage):
         output_file = Path(repo_path).parent.parent / "energy_measurements" / f"energy_results_{self.timestamp}.csv"
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
+        write_header = not output_file.exists() or output_file.stat().st_size == 0
         with output_file.open("a") as fh:
-            fh.write(f"{commit_hash},{energy_pkg}\n")
+            if write_header:
+                fh.write("commit,energy-pkg,energy-ram,seconds,temp_before,temp_after\n")
+            fh.write(
+                f"{commit_hash},{perf_values['power/energy-pkg/']},{perf_values['power/energy-ram/']},"
+                f"{perf_values['seconds time elapsed']},{temp_before},{temp_after}\n",
+            )
 
         logger.info("Appended energy data to %s", output_file, context=context)
 
@@ -84,7 +120,7 @@ class MeasureEnergyStage(PipelineStage):
                 return
 
     @staticmethod
-    def extract_energy_value(perf_output: str, event_name: str) -> str | None:
+    def extract_perf_value(perf_output: str, event_name: str) -> str | None:
         """Extracts the value of the specified event from perf output.
 
         Args:

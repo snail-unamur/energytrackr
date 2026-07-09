@@ -11,6 +11,7 @@ import pytest
 from energytrackr.config.config_store import Config
 from energytrackr.pipeline.core_stages.temperature_check_stage import TemperatureCheckStage
 from energytrackr.utils.logger import logger
+from energytrackr.utils.utils import read_cpu_temp
 
 
 @pytest.fixture(autouse=True)
@@ -56,14 +57,14 @@ def test_read_cpu_temp_success(tmp_path: Path) -> None:
     temperature = 42000
     f = tmp_path / "t"
     f.write_text(f" {temperature}\n")
-    assert TemperatureCheckStage._read_cpu_temp(str(f)) == temperature
+    assert read_cpu_temp(str(f)) == temperature
 
 
 def test_read_cpu_temp_file_not_found() -> None:
     """Test that the function raises an OSError if the file does not exist."""
     missing = "/nonexistent/path"
     with pytest.raises(OSError):
-        TemperatureCheckStage._read_cpu_temp(missing)
+        read_cpu_temp(missing)
 
 
 def test_read_cpu_temp_invalid_content(tmp_path: Path) -> None:
@@ -75,7 +76,7 @@ def test_read_cpu_temp_invalid_content(tmp_path: Path) -> None:
     f = tmp_path / "t"
     f.write_text("not-an-int")
     with pytest.raises(ValueError):
-        TemperatureCheckStage._read_cpu_temp(str(f))
+        read_cpu_temp(str(f))
 
 
 def test_run_immediate_under_limit(
@@ -122,7 +123,10 @@ def test_run_two_reads_above_then_below(
     """
     _, _ = dummy_config
     seq = [7000, 5000]
-    monkeypatch.setattr(TemperatureCheckStage, "_read_cpu_temp", staticmethod(lambda _: seq.pop(0)))
+    monkeypatch.setattr(
+        "energytrackr.pipeline.core_stages.temperature_check_stage.read_cpu_temp",
+        lambda _: seq.pop(0),
+    )
 
     caplog.set_level(logging.WARNING, logger=logger.name)
 
@@ -141,6 +145,7 @@ def test_run_read_error_breaks(
     caplog: pytest.LogCaptureFixture,
     exc: OSError | ValueError,
     no_sleep: list[int],
+    dummy_config: tuple[Any, SimpleNamespace],  # noqa: ARG001
 ) -> None:
     """Test that a read error breaks the loop and logs a warning.
 
@@ -151,8 +156,7 @@ def test_run_read_error_breaks(
         no_sleep (list[int]): The list to record sleep calls.
     """
     monkeypatch.setattr(
-        TemperatureCheckStage,
-        "_read_cpu_temp",
+        "energytrackr.pipeline.core_stages.temperature_check_stage.read_cpu_temp",
         staticmethod(lambda _: (_ for _ in ()).throw(exc)),
     )
 

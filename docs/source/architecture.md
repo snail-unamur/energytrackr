@@ -13,8 +13,7 @@ Each stage implements the same interface:
 ```python
 class PipelineStage(ABC):
     @abstractmethod
-    def run(self, context: dict[str, Any]) -> None:
-        ...
+    def run(self, context: dict[str, Any]) -> None: ...
 ```
 
 ---
@@ -89,6 +88,7 @@ Each stage is a self-contained Python class and can be loaded dynamically from u
 class PythonEnvStage(PipelineStage):
     def run(self, context: dict[str, Any]) -> None:
         os.system("pip install -r requirements.txt")
+
 
 def get_stage():
     return PythonEnvStage()
