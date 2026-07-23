@@ -96,7 +96,6 @@ class JavaSetupStage(PipelineStage):
             Optional[str]: The Java version specified in the POM file, or None if not found.
         """
         # 1. Parse the POM file
-        tree = ET.parse(pom_file)
         try:
             tree = ET.parse(pom_file)
         except ET.ParseError:
