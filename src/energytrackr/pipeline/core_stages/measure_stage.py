@@ -112,9 +112,9 @@ class MeasureEnergyStage(PipelineStage):
 
         # record as float for later statistical tests
         try:
-            context["energy_value"] = float(energy_pkg)  # type: ignore[arg-type]
+            context["energy_value"] = float(perf_values['power/energy-pkg/'])
         except (TypeError, ValueError):
-            logger.warning("Failed to parse energy value '%s'", energy_pkg, context=context)
+            logger.warning("Failed to parse energy value '%s'", perf_values['power/energy-pkg/'], context=context)
             if not config.execution_plan.ignore_failures:
                 context["abort_pipeline"] = True
                 return
