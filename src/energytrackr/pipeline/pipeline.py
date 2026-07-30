@@ -124,7 +124,7 @@ class PipelineEngine:
         commits: list[Commit] = initial_commits or gather_commits(Repo(self.repo_path))
 
         # 1. Pre-stages
-        self.run_pre_stages(commits)
+        commits = self.run_pre_stages(commits)
 
         columns = [
             SpinnerColumn(style="green"),
@@ -199,20 +199,28 @@ class PipelineEngine:
         )
         self._strategy.summarize()
 
-    def run_pre_stages(self, commits: list[Commit]) -> None:
+    def run_pre_stages(self, commits: list[Commit]) -> list[Commit]:
         """Run the pre-stages of the pipeline.
 
         Args:
             commits (list[Commit]): List of commits to process.
+
+        Returns:
+            list[Commit]: The filtered list of commits after pre-stage processing.
         """
         commits_str = [c.hexsha for c in commits]
         ctx_full = Context(commit=commits_str[0], repo_path=str(self.repo_path), commits=commits_str)
         self._pre_stage.run(ctx_full)
         if ctx_full.abort_pipeline:
             logger.error("Aborted during *pre* stage - bailing out.")
-            return
-        commits = list(ctx_full.get_commits() or commits)
-        logger.info("%d commits remain after filters", len(commits))
+            return commits
+        # FilterAndRegressionStage replaces context["commits"] in-place with Commit objects.
+        # Read them directly to avoid re-resolving each commit through the repo.
+        filtered: list[Commit] = ctx_full["commits"]  # type: ignore[assignment]
+        if not filtered:
+            return commits
+        logger.info("%d commits remain after filters", len(filtered))
+        return filtered
 
     @staticmethod
     def clean_cache_dir(repo_path: str) -> None:
