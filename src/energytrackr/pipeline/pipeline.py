@@ -153,6 +153,7 @@ class PipelineEngine:
                     setup_task = progress.add_task("Setup", total=len(contexts))
                     self._setup_stage.execute_over(contexts, progress, task_id=setup_task)
                     progress.remove_task(setup_task)
+                    propagate_build_failed(contexts)
                     # 2. Test stages
                     test_task = progress.add_task("Testing", total=len(contexts))
                     self._test_stage.execute_over(contexts, progress, task_id=test_task)
@@ -273,3 +274,15 @@ def measure(config_path: str | Path) -> None:
         except GitError as exc:
             logger.warning("Could not checkout default branch for cleanup: %s", exc)
         shutil.rmtree(repo_path.parent, ignore_errors=True)
+
+def propagate_build_failed(contexts: list[Context]) -> None:
+    """Propagate build_failed status to all contexts with the same commit SHA.
+
+    Args:
+        contexts (list[Context]): List of Context objects to process.
+    """
+    failed_shas = {ctx.commit for ctx in contexts if ctx.build_failed}
+    if failed_shas:
+        for ctx in contexts:
+            if ctx.commit in failed_shas:
+                ctx.build_failed = True
