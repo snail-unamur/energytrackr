@@ -50,6 +50,7 @@ from energytrackr.pipeline.core_stages.filter_and_regression_stage import (
 from energytrackr.pipeline.core_stages.measure_stage import MeasureEnergyStage
 from energytrackr.pipeline.core_stages.post_test_stage import PostTestStage
 from energytrackr.pipeline.core_stages.set_directory_stage import SetDirectoryStage
+from energytrackr.pipeline.core_stages.stability_check_stage import StabilityCheckStage
 from energytrackr.pipeline.core_stages.temperature_check_stage import (
     TemperatureCheckStage,
 )
@@ -95,7 +96,7 @@ class PipelineEngine:
         # ------------------------ Stage graph ---------------------------
         self._pre_stage = StageGroup(
             "pre",
-            [VerifyPerfStage(), FilterAndRegressionStage()],
+            [VerifyPerfStage(), StabilityCheckStage(), FilterAndRegressionStage()],
             parallel="pre" in par,
         )
         self._setup_stage = StageGroup(
