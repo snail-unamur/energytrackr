@@ -55,6 +55,7 @@ from energytrackr.pipeline.core_stages.temperature_check_stage import (
     TemperatureCheckStage,
 )
 from energytrackr.pipeline.core_stages.verify_perf_stage import VerifyPerfStage
+from energytrackr.pipeline.custom_stages.java_setup_stage import JavaSetupStage
 from energytrackr.pipeline.stage_interface import StageGroup
 
 # from energytrackr.pipeline.strategies.bisection import BisectionStrategy  # noqa: F401 # pylint: disable=unused-import
@@ -101,13 +102,13 @@ class PipelineEngine:
         )
         self._setup_stage = StageGroup(
             "setup",
-            [CopyDirectoryStage(), SetDirectoryStage(), CheckoutStage(), BuildStage()],
+            [CopyDirectoryStage(), SetDirectoryStage(), CheckoutStage(), JavaSetupStage(), BuildStage()],
             parallel=False,
             deduplicate=True,
         )
         self._test_stage = StageGroup(
             "test",
-            [TemperatureCheckStage(), SetDirectoryStage(), MeasureEnergyStage()],
+            [TemperatureCheckStage(), SetDirectoryStage(), JavaSetupStage(), MeasureEnergyStage()],
             parallel="test" in par,
         )
         self._post_stage = StageGroup("post", [PostTestStage()], parallel="post" in par)
@@ -198,7 +199,7 @@ class PipelineEngine:
             "Pipeline finished - %s commits black-listed as unbuildable.",
             len(self._build_blacklist),
         )
-        self._strategy.summarize()
+        #self._strategy.summarize()
 
     def run_pre_stages(self, commits: list[Commit]) -> list[Commit]:
         """Run the pre-stages of the pipeline.
