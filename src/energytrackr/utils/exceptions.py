@@ -300,3 +300,15 @@ class JavaHomeNotFoundError(ValueError):
             java_home (str): The JAVA_HOME path that does not exist or is not a directory.
         """
         super().__init__(f"java_home path does not exist or is not a directory: {java_home}")
+
+
+class PipelineAbortError(RuntimeError):
+    """Raised when a *stage* requests an immediate shutdown of the pipeline."""
+
+    def __init__(self, message: str = "Pipeline aborted by stage request.") -> None:
+        """Initialize the exception with an optional message.
+
+        Args:
+            message (str): The message describing the reason for aborting the pipeline.
+        """
+        super().__init__(message)

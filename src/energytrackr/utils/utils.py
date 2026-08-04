@@ -3,25 +3,25 @@
 import math
 import subprocess
 from pathlib import Path
-from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from energytrackr.config.config_store import Config
+from energytrackr.pipeline.context import Context
 from energytrackr.utils.logger import logger
 
 
 def run_command(
     arg: str,
     cwd: str | None = None,
-    context: dict[str, Any] | None = None,
+    context: Context | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Executes a shell command, streaming and capturing its output in real time.
 
     Args:
         arg (str): The command to run.
         cwd (str | None): The working directory for the command.
-        context (dict[str, Any] | None): The context dictionary for logging.
+        context (Context | None): The context for logging.
 
     Returns:
         subprocess.CompletedProcess[str]: The completed process object containing the command's output and return code.

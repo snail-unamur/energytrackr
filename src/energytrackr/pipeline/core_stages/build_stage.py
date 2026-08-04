@@ -1,8 +1,7 @@
 """Module to build the project if in 'benchmarks' mode or skip if in 'tests' mode."""
 
-from typing import Any
-
 from energytrackr.config.config_store import Config
+from energytrackr.pipeline.context import Context
 from energytrackr.pipeline.stage_interface import PipelineStage
 from energytrackr.utils.logger import logger
 from energytrackr.utils.utils import run_command
@@ -11,7 +10,7 @@ from energytrackr.utils.utils import run_command
 class BuildStage(PipelineStage):
     """Builds the project if in 'benchmarks' mode, or skip if 'tests' mode has no build commands."""
 
-    def run(self, context: dict[str, Any]) -> None:  # noqa: PLR6301
+    def run(self, context: Context) -> None:  # noqa: PLR6301
         """Executes the build stage of the pipeline based on the provided context and configuration.
 
         This method handles two primary modes of operation:
@@ -21,7 +20,7 @@ class BuildStage(PipelineStage):
                failures similarly to benchmarks mode.
 
         Args:
-            context (dict[str, Any]): A dictionary to store the state of the pipeline execution.
+            context (Context): The pipeline context containing at least a "commits" key with a list of Commit objects.
             Keys used:
                 - "build_failed" (bool): Indicates if any build command failed.
                 - "abort_pipeline" (bool): Indicates if the pipeline should be aborted.

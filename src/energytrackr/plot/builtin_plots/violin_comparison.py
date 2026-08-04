@@ -49,7 +49,7 @@ class ViolinComparison(
         p = figure(
             title=self._title(ctx),
             sizing_mode="stretch_width",
-            tools="pan,box_zoom,reset,save,wheel_zoom,hover",
+            tools="pan,box_zoom,reset,save,wheel_zoom",
             toolbar_location="above",
             y_axis_label=f"{field} (J)",
         )

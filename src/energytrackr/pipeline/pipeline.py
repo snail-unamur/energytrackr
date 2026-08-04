@@ -1,13 +1,31 @@
-"""Pipeline orchestrator for running stages on commits in a repository."""
+"""EnergyTrackr pipeline core.
 
-import concurrent.futures
+Key architectural highlights
+----------------------------
+* **Strategy plug-in registry** - new strategies (e.g. *DFS*, *genetic*) can be
+  added in a single class decorated with :pyfunc:`@register_strategy` - no core
+  edits required.
+* **StageGroup** (formerly *ContainerStage*) cleanly encapsulates a composite
+  execution unit with optional *deduplication* and *parallelism*.
+* **PipelineEngine** orchestrates StageGroups and delegates batching to a
+  pluggable strategy; clear public surface for unit-testing.
+* **Typed Context** remains but now supports mapping protocol fully.
+* **Functional verticals** (strategy, execution, utils) live in isolated
+  sections to avoid huge files and untangle import dependencies.
+
+The module is self-contained; existing stage implementations continue to work
+unchanged.  A downstream project can now extend the pipeline by simply adding
+``energytrackr/pipeline/strategies/my_algo.py`` with a registered class.
+"""
+
+from __future__ import annotations
+
 import os
-import random
 import shutil
-import sys
-from typing import Any
+from pathlib import Path
+from typing import Final
 
-import git
+from git import Commit, GitError, Repo
 from rich.progress import (
     BarColumn,
     Progress,
@@ -20,486 +38,261 @@ from rich.progress import (
 from energytrackr.config.config_model import PipelineConfig
 from energytrackr.config.config_store import Config
 from energytrackr.config.loader import load_pipeline_config
+from energytrackr.pipeline.context import Context
 from energytrackr.pipeline.core_stages.build_stage import BuildStage
 from energytrackr.pipeline.core_stages.checkout_stage import CheckoutStage
-from energytrackr.pipeline.core_stages.copy_directory_stage import CopyDirectoryStage
-from energytrackr.pipeline.core_stages.filter_and_regression_stage import FilterAndRegressionStage
+from energytrackr.pipeline.core_stages.copy_directory_stage import (
+    CopyDirectoryStage,
+)
+from energytrackr.pipeline.core_stages.filter_and_regression_stage import (
+    FilterAndRegressionStage,
+)
 from energytrackr.pipeline.core_stages.measure_stage import MeasureEnergyStage
 from energytrackr.pipeline.core_stages.post_test_stage import PostTestStage
 from energytrackr.pipeline.core_stages.set_directory_stage import SetDirectoryStage
-from energytrackr.pipeline.core_stages.temperature_check_stage import TemperatureCheckStage
+from energytrackr.pipeline.core_stages.stability_check_stage import StabilityCheckStage
+from energytrackr.pipeline.core_stages.temperature_check_stage import (
+    TemperatureCheckStage,
+)
 from energytrackr.pipeline.core_stages.verify_perf_stage import VerifyPerfStage
 from energytrackr.pipeline.custom_stages.java_setup_stage import JavaSetupStage
-from energytrackr.pipeline.stage_interface import PipelineStage
+from energytrackr.pipeline.stage_interface import StageGroup
+
+# from energytrackr.pipeline.strategies.bisection import BisectionStrategy  # noqa: F401 # pylint: disable=unused-import
+# from energytrackr.pipeline.strategies.breadth_first import ThreePointStrategy  # noqa: F401  # pylint: disable=unused-import
+# from energytrackr.pipeline.strategies.divide_conquer import DivideConquerStrategy  # noqa: F401 # pylint: disable=unused-import
+from energytrackr.pipeline.strategies.naive import NaiveStrategy  # noqa: F401 # pylint: disable=unused-import
+from energytrackr.pipeline.strategies.pruned_endpoint_segmentation import (
+    PrunedEndpointSegmentationStrategy,
+)  # noqa: F401 # pylint: disable=unused-import
+from energytrackr.pipeline.strategies.strategy_interface import (
+    BatchStrategy,
+    register_strategy,
+)
+from energytrackr.utils.exceptions import PipelineAbortError
 from energytrackr.utils.git_utils import clone_or_open_repo, gather_commits
 from energytrackr.utils.logger import logger
 
-pre_stages: list[PipelineStage] = [
-    VerifyPerfStage(),
-    FilterAndRegressionStage(),
-]
-
-pre_test_stages: list[PipelineStage] = [
-    CopyDirectoryStage(),
-    SetDirectoryStage(),
-    CheckoutStage(),
-    JavaSetupStage(),
-    BuildStage(),
-]
-
-batch_stages: list[PipelineStage] = [
-    TemperatureCheckStage(),
-    SetDirectoryStage(),
-    JavaSetupStage(),
-    MeasureEnergyStage(),
-    PostTestStage(),
-]
+__all__: Final[tuple[str, ...]] = (
+    "BatchStrategy",
+    "Context",
+    "PipelineAbortError",
+    "PipelineEngine",
+    "StageGroup",
+    "measure",
+    "register_strategy",
+)
 
 
-def compile_stages() -> dict[str, list[PipelineStage]]:
-    """Compile the pipeline stages based on the execution plan.
+class PipelineEngine:
+    """High-level orchestrator that drives all stages across commits."""
 
-    Returns:
-        list[PipelineStage]: The compiled list of pipeline stages.
-    """
-    return {"pre_stages": pre_stages, "pre_test_stages": pre_test_stages, "batch_stages": batch_stages}
+    def __init__(self, repo_path: Path | str, *, config: PipelineConfig) -> None:
+        """Initialize the pipeline engine."""
+        self.repo_path = Path(repo_path)
+        self.config = config
+        plan = config.execution_plan
+        par = set(getattr(plan, "parallel_stages", []))
 
+        # ------------------------ Stage graph ---------------------------
+        self._pre_stage = StageGroup(
+            "pre",
+            [VerifyPerfStage(), StabilityCheckStage(), FilterAndRegressionStage()],
+            parallel="pre" in par,
+        )
+        self._setup_stage = StageGroup(
+            "setup",
+            [CopyDirectoryStage(), SetDirectoryStage(), CheckoutStage(), JavaSetupStage(), BuildStage()],
+            parallel=False,
+            deduplicate=True,
+        )
+        self._test_stage = StageGroup(
+            "test",
+            [TemperatureCheckStage(), SetDirectoryStage(), JavaSetupStage(), MeasureEnergyStage()],
+            parallel="test" in par,
+        )
+        self._post_stage = StageGroup("post", [PostTestStage()], parallel="post" in par)
 
-def setup_project_dirs(config: PipelineConfig, config_dir: str) -> str:
-    """Set up project, cache directories and return their paths.
+        self._strategy: BatchStrategy = BatchStrategy.from_config(config)
+        self._build_blacklist: set[str] = set()
 
-    Args:
-        config (Config): The configuration object containing repository information.
-
-    Returns:
-        tuple[str, str, str]: Paths for project directory, cache directory, and repository path.
-    """
-    project_name = os.path.basename(config.repo.url).replace(".git", "").lower()
-    cache_dir = os.path.join(config_dir, ".cache")
-    logger.info("Setting up cache directory: %s", cache_dir)
-    os.makedirs(cache_dir, exist_ok=True)
-    repo_path = os.path.abspath(os.path.join(cache_dir, f".cache_{project_name}"))
-    logger.info("Setting up project directories: %s", repo_path)
-    return repo_path
-
-
-def run_setup_commands(commands: list[str]) -> None:
-    """Run system-level setup commands if provided.
-
-    Args:
-        commands (list[str]): List of shell commands to run.
-    """
-    for cmd in commands:
-        logger.info("Running setup command: %s", cmd)
-        os.system(cmd)
-
-
-def run_pre_stages(commits: list[git.Commit], repo_path: str) -> bool:
-    """Run pre-stages on the full commit list. Returns True if pipeline should continue.
-
-    Args:
-        commits (list[git.Commit]): List of git.Commit objects to process.
-        repo_path (str): Path to the repository.
-
-    Returns:
-        bool: True if the pipeline should continue, False if it should abort.
-    """
-    pre_context = {
-        "build_failed": False,
-        "abort_pipeline": False,
-        "repo_path": repo_path,
-        "commits": commits,
-    }
-    for stage in pre_stages:
-        stage.run(pre_context)
-        if pre_context.get("abort_pipeline"):
-            logger.warning("Pre-stages aborted the pipeline.")
-            return False
-    return True
-
-
-def create_batches(
-    commits: list[git.Commit],
-    batch_size: int,
-    num_runs: int,
-    num_repeats: int,
-    randomize_tasks: bool,
-) -> list[list[Any]]:
-    """Divide commits into batches and expand according to runs/repeats.
-
-    Args:
-        commits (list[Commit]): List of git.Commit objects to process.
-        batch_size (int): Number of commits per batch.
-        num_runs (int): Number of runs per commit.
-        num_repeats (int): Number of repeats for each run.
-        randomize_tasks (bool): Whether to randomize the order of tasks in each batch.
-
-    Returns:
-        list[list[Any]]: List of batches, where each batch is a list of commits.
-    """
-    commit_batches = [commits[i : i + batch_size] for i in range(0, len(commits), batch_size)]
-    batches: list[list[git.Commit]] = []
-    for commit_batch in commit_batches:
-        batch_tasks: list[git.Commit] = []
-        runs_per_commit = num_runs * num_repeats
-        for commit in commit_batch:
-            batch_tasks.extend([commit] * runs_per_commit)
-        if randomize_tasks:
-            random.shuffle(batch_tasks)
-        batches.append(batch_tasks)
-    return batches
-
-
-def restore_head(repo: git.Repo, branch: str) -> None:
-    """Restore the repository's HEAD to the latest commit on the specified branch.
-
-    Args:
-        repo (git.Repo): The Git repository object.
-        branch (str): The branch to restore HEAD to.
-    """
-    repo.git.checkout(branch)
-    logger.info("Restored HEAD to latest commit on branch %s.", branch)
-
-
-def measure(config_path: str) -> None:
-    """Executes the measurement process for a given repository based on the provided configuration.
-
-    This function performs the following steps:
-    1. Loads the pipeline configuration from the specified path.
-    2. Sets up the repository directory and clones or opens the repository.
-    3. Optionally runs system-level setup commands.
-    4. Collects all commits from the repository.
-    5. Runs the pre-stages once on the complete commit list for initial filtering.
-    6. Divides the filtered commits into batches.
-    7. Executes the remaining pipeline stages on these batches.
-    8. Restores the repository's HEAD to the latest commit on the specified branch.
-
-    Args:
-        config_path (str): The file path to the configuration file.
-
-    Raises:
-        Exceptions raised during the execution of repository operations or pipeline processing.
-    """
-    load_pipeline_config(config_path)
-    # Retrieve the configuration folder
-    config_folder = os.path.dirname(config_path)
-    config = Config.get_config()
-
-    # Set up directories and repository
-    repo_path = setup_project_dirs(config, config_folder)
-    repo = clone_or_open_repo(repo_path, config.repo.url, config.repo.clone_options)
-
-    # (Optional) run system-level setup commands.
-    if config.setup_commands:
-        run_setup_commands(config.setup_commands)
-
-    # Gather all commits from the repository.
-    commits = gather_commits(repo)
-    logger.info("Collected %d commits to process.", len(commits))
-
-    # Run pre-stages once on the full list of commits
-    if not run_pre_stages(commits, repo_path):
-        return
-
-    logger.info("Filtered commits: %d", len(commits))
-
-    # Divide the filtered commits into batches
-    batches = create_batches(
-        commits,
-        config.execution_plan.batch_size,
-        config.execution_plan.num_runs,
-        config.execution_plan.num_repeats,
-        config.execution_plan.randomize_tasks,
-    )
-
-    pipeline = Pipeline(compile_stages(), repo_path)
-    pipeline.run(batches)
-
-    # Restore HEAD
-    restore_head(repo, config.repo.branch)
-
-
-def run_pre_test_stages_for_commit(commit_hexsha: str, repo_path: str) -> dict[str, Any]:
-    """Process the pre-test stages for a single commit in a separate process.
-
-    Instead of receiving a git.Commit object (which might not be picklable), we pass the commit's hexsha.
-    Each process reopens the repository using repo_path and retrieves the commit object.
-
-    Args:
-        commit_hexsha (str): The hexsha of the commit to process.
-        repo_path (str): Path to the repository.
-
-    Returns:
-        dict: The context after processing the stages.
-    """
-    commit_context: dict[str, Any] = {
-        "commit": commit_hexsha,
-        "build_failed": False,
-        "abort_pipeline": False,
-        "repo_path": repo_path,
-        "worker_process": True,
-    }
-
-    # 1. Re-open the repository
-    try:
-        repo = git.Repo(repo_path)
-    except (git.InvalidGitRepositoryError, git.NoSuchPathError) as e:
-        logger.exception("Invalid repo at %s: %s", repo_path, e, context=commit_context)
-        commit_context["abort_pipeline"] = True
-        return commit_context
-    except Exception as e:
-        logger.exception("Unexpected error opening %s: %s", repo_path, e, context=commit_context)
-        commit_context["abort_pipeline"] = True
-        return commit_context
-
-    # 2. Retrieve the commit object
-    try:
-        commit = repo.commit(commit_hexsha)
-    except (ValueError, git.BadName) as e:
-        logger.exception("Bad commit hexsha %s: %s", commit_hexsha, e, context=commit_context)
-        commit_context["abort_pipeline"] = True
-        return commit_context
-    except Exception as e:
-        logger.exception("Unexpected error retrieving commit %s: %s", commit_hexsha, e, context=commit_context)
-        commit_context["abort_pipeline"] = True
-        return commit_context
-
-    # Success: record the resolved hexsha
-    commit_context["commit"] = commit.hexsha
-
-    # 3. Execute each pre-test stage in isolation
-    for stage in pre_test_stages:
-        try:
-            stage.run(commit_context)
-        except Exception as e:
-            logger.exception(
-                "Error running stage %s on commit %s: %s",
-                stage.__class__.__name__,
-                commit.hexsha,
-                e,
-                context=commit_context,
-            )
-            # If a stage fails fatally, signal to abort further stages
-            commit_context["abort_pipeline"] = True
-
-        if commit_context.get("abort_pipeline"):
-            break
-
-    return commit_context
-
-
-def log_context_buffer(context: dict[str, Any]) -> None:
-    """Flushes buffered log calls from a context dict to the main logger.
-
-    Reads the list of buffered entries under `context["log_buffer"]`, and replays
-    each one (including its original format string and args).
-
-    Args:
-        context: A dict which should contain:
-            - "log_buffer": List of tuples (level, msg, args, kwargs)
-            - "commit": Optional str commit identifier for header logging
-    """
-    buffer: list[tuple[int, str, tuple[Any, ...], dict[str, Any]]] = context.get("log_buffer", [])
-    commit_id: str = context.get("commit", "UNKNOWN")
-
-    if not buffer:
-        return
-
-    logger.info("----- Logs for commit %s -----", commit_id[:8])
-    for level, fmt, args, kwargs in buffer:
-        logger.log(level, fmt, *args, **kwargs)
-    logger.info("----- End of logs for %s -----\n", commit_id[:8])
-
-
-def clean_cache_dir(repo_path: str) -> None:
-    """Remove all entries in the cache directory (siblings of the cloned repo) to free disk space.
-
-    Given that repo_path points to:
-        <project_dir>/.cache/.cache_<project_name>
-    this will delete everything under `<project_dir>/.cache/` except the live repo folder.
-
-    Args:
-        repo_path (str): Absolute path to the cloned repository.
-    """
-    cache_dir = os.path.dirname(repo_path)
-    if not os.path.isdir(cache_dir):
-        logger.warning("Cache directory %s does not exist", cache_dir)
-        return
-
-    for entry in os.listdir(cache_dir):
-        entry_path = os.path.join(cache_dir, entry)
-        # skip the active repo clone itself
-        if os.path.abspath(entry_path) == os.path.abspath(repo_path):
-            continue
-        try:
-            if os.path.isdir(entry_path):
-                shutil.rmtree(entry_path)
-            else:
-                os.remove(entry_path)
-            logger.info("Removed cache entry: %s", entry_path)
-        except Exception as e:
-            logger.warning("Failed to remove cache entry %s: %s", entry_path, e)
-
-
-class Pipeline:
-    """Orchestrates the provided stages for each commit in sequence."""
-
-    def __init__(self, stages: dict[str, list[PipelineStage]], repo_path: str) -> None:
-        """Initializes the Pipeline with the given stages and configuration.
+    def run(self, *, initial_commits: list[Commit] | None = None) -> None:
+        """Execute the full **energy measurement pipeline**.
 
         Args:
-            stages (dict[str, list[PipelineStage]]): A dictionary where the keys are stage names (as strings)
-                and the values are lists of PipelineStage objects representing the stages of the pipeline.
-            repo_path (str): The path to the Git repository to be processed.
-
+            initial_commits: Optional list of commits to start with. If not
+                provided, all commits in the repository will be gathered.
         """
-        self.stages = stages
-        self.config = Config.get_config()
-        self.repo_path = repo_path
+        commits: list[Commit] = initial_commits or gather_commits(Repo(self.repo_path))
 
-    @staticmethod
-    def _run_stage_group(stages: list[PipelineStage], context: dict[str, Any]) -> bool:
-        """Run a group of stages with the given context.
+        # 1. Pre-stages
+        commits = self.run_pre_stages(commits)
 
-        Args:
-            stages (list[PipelineStage]): A list of PipelineStage objects to run.
-            context (dict[str, Any]): A dictionary containing the context for the pipeline execution.
-                This context is passed to each stage during execution.
-
-        Returns:
-            bool: True if all stages completed successfully, False if any stage aborted the pipeline.
-        """
-        for stage in stages:
-            stage.run(context)
-            if context.get("abort_pipeline"):
-                logger.warning("Aborting remaining stages for stage %s", stage.__class__.__name__)
-                return False
-        return True
-
-    def run(self, batches: list[list[git.Commit]]) -> None:
-        """Executes the pipeline over a list of batches, where each batch contains a list of commits.
-
-        Args:
-            batches (list[list[git.Commit]]): A list of batches, where each batch is a list of git.Commit objects.
-        """
-        failed_commits: set[str] = set()
-
-        with Progress(
+        columns = [
             SpinnerColumn(style="green"),
             TextColumn("[bold]{task.description}"),
             BarColumn(bar_width=None, complete_style="cyan", finished_style="green"),
             TextColumn("[progress.percentage]{task.percentage:>5.1f}%"),
-            TextColumn("{task.completed:>4}/{task.total:<4}", justify="right"),
+            TextColumn("{task.completed}/{task.total}", justify="right"),
             TimeElapsedColumn(),
             TimeRemainingColumn(),
-            transient=True,
-        ) as progress:
-            pipeline_task = progress.add_task("🔋Energy Pipeline", total=len(batches))
+        ]
 
-            for batch in batches:
-                logger.info("Processing batch of %d tasks", len(batch))
-                unique_commit_hexshas = list({commit.hexsha for commit in batch})
+        with Progress(*columns, transient=True) as progress:
+            region_task = progress.add_task("Regions", total=self._strategy.get_search_space(commits))
+            while True:
+                # 2. Create initial batches
+                batches: list[list[Commit]] = self._strategy.create_batches(commits)
 
-                self._run_pre_test_stages(unique_commit_hexshas, failed_commits, progress)
-                batch_to_process = [commit for commit in batch if commit.hexsha not in failed_commits]
-                self._run_batch_stages(batch_to_process, progress)
+                batch_task = progress.add_task("Batches", total=len(batches))
 
-                clean_cache_dir(self.repo_path)
-                progress.advance(pipeline_task)
+                results: dict[str, list[float]] = {}
+                for batch in batches:
+                    contexts: list[Context] = [
+                        Context(commit=c.hexsha, repo_path=str(self.repo_path), commits=[c.hexsha]) for c in batch
+                    ]
+                    # 1. Build stages
+                    setup_task = progress.add_task("Setup", total=len(contexts))
+                    self._setup_stage.execute_over(contexts, progress, task_id=setup_task)
+                    progress.remove_task(setup_task)
+                    propagate_build_failed(contexts)
+                    # 2. Test stages
+                    test_task = progress.add_task("Testing", total=len(contexts))
+                    self._test_stage.execute_over(contexts, progress, task_id=test_task)
+                    progress.remove_task(test_task)
+                    # 3. Post stages
+                    post_task = progress.add_task("Post-processing", total=len(contexts))
+                    self._post_stage.execute_over(contexts, progress, task_id=post_task)
+                    progress.remove_task(post_task)
+                    # 4. Clean up cache
+                    try:
+                        self.clean_cache_dir(str(self.repo_path))
+                    except Exception as exc:
+                        logger.warning("Cache cleanup failed: %s", exc)
+                    progress.update(batch_task, advance=1)
 
-    def _run_pre_test_stages(
-        self,
-        unique_commit_hexshas: list[str],
-        failed_commits: set[str],
-        progress: Progress,
-    ) -> None:
-        """Run all pre-test stages on each unique commit, optionally in parallel.
+                    # 4. Collect results
+                    for context in contexts:
+                        if context["energy_value"] is None:
+                            logger.warning("Commit %s has no energy value - skipping.", context.get_commit().hexsha)
+                            continue
+                        results.setdefault(context.get_commit().hexsha, []).append(context["energy_value"])
+
+                    # 5. Update build blacklist
+                    logger.debug("Batch %s results: %s", [c.hexsha for c in batch], results)
+                    for c in batch:
+                        if c.hexsha not in results:
+                            self._build_blacklist.add(c.hexsha)
+
+                progress.remove_task(batch_task)
+
+                # 6. Check if we need to refine commits
+                if not self._strategy.refine_commits(
+                    commits,
+                    results,
+                    build_blacklist=self._build_blacklist,
+                ):
+                    logger.info("No new regions to explore - pipeline finished.")
+                    break
+                progress.update(region_task, advance=1)
+        logger.info(
+            "Pipeline finished - %s commits black-listed as unbuildable.",
+            len(self._build_blacklist),
+        )
+        #self._strategy.summarize()
+
+    def run_pre_stages(self, commits: list[Commit]) -> list[Commit]:
+        """Run the pre-stages of the pipeline.
 
         Args:
-            unique_commit_hexshas: List of commit SHAs to process.
-            failed_commits: A set to which failed SHAs will be added.
-            progress: Rich Progress instance for updating a sub-task bar.
+            commits (list[Commit]): List of commits to process.
+
+        Returns:
+            list[Commit]: The filtered list of commits after pre-stage processing.
         """
-        use_mp: bool = getattr(self.config.execution_plan, "use_multiprocessing", False)
-        logger.info("Using multiprocessing: %s", use_mp)
-        total = len(unique_commit_hexshas)
-        subtask = progress.add_task("Pre batch stages", total=total)
+        commits_str = [c.hexsha for c in commits]
+        ctx_full = Context(commit=commits_str[0], repo_path=str(self.repo_path), commits=commits_str)
+        self._pre_stage.run(ctx_full)
+        if ctx_full.abort_pipeline:
+            logger.error("Aborted during *pre* stage - bailing out.")
+            return commits
+        # FilterAndRegressionStage replaces context["commits"] in-place with Commit objects.
+        # Read them directly to avoid re-resolving each commit through the repo.
+        filtered: list[Commit] = ctx_full["commits"]  # type: ignore[assignment]
+        if not filtered:
+            return commits
+        logger.info("%d commits remain after filters", len(filtered))
+        return filtered
 
-        if use_mp:
-            # parallel execution
-            with concurrent.futures.ProcessPoolExecutor() as executor:
-                futures = {
-                    executor.submit(run_pre_test_stages_for_commit, sha, self.repo_path): sha for sha in unique_commit_hexshas
-                }
-                for future in concurrent.futures.as_completed(futures):
-                    sha = futures[future]
-                    try:
-                        ctx = future.result(timeout=self.config.timeout)
-                    except Exception:
-                        logger.exception("Commit %s generated an exception.", sha)
-                        progress.advance(subtask)
-                        continue
+    @staticmethod
+    def clean_cache_dir(repo_path: str) -> None:
+        """Remove all entries in the cache directory (siblings of the cloned repo) to free disk space.
 
-                    log_context_buffer(ctx)
-                    if ctx.get("abort_pipeline"):
-                        logger.warning("Aborting pipeline due to commit %s", sha)
-                        sys.exit(1)
-                    if ctx.get("build_failed"):
-                        logger.warning("Build failed for commit %s", sha)
-                        failed_commits.add(sha)
+        Given that repo_path points to:
+            <project_dir>/.cache/.cache_<project_name>
+        this will delete everything under `<project_dir>/.cache/` except the live repo folder.
 
-                    desc = f"Pre batch stages (failed: {len(failed_commits)})" if failed_commits else "Pre batch stages"
-                    progress.update(subtask, advance=1, description=desc)
-            progress.remove_task(subtask)
+        Args:
+            repo_path (str): Absolute path to the cloned repository.
+        """
+        cache_dir = os.path.dirname(repo_path)
+        if not os.path.isdir(cache_dir):
+            logger.warning("Cache directory %s does not exist", cache_dir)
+            return
 
-        else:
-            # sequential execution
-            for sha in unique_commit_hexshas:
-                ctx = run_pre_test_stages_for_commit(sha, self.repo_path)
-                log_context_buffer(ctx)
-                if ctx.get("abort_pipeline"):
-                    logger.warning("Aborting pipeline due to commit %s", sha)
-                    sys.exit(1)
-                if ctx.get("build_failed"):
-                    logger.warning("Build failed for commit %s", sha)
-                    failed_commits.add(sha)
-
-                desc = f"Pre batch stages (failed: {len(failed_commits)})" if failed_commits else "Pre batch stages"
-                progress.update(subtask, advance=1, description=desc)
-            progress.remove_task(subtask)
-
-    def _run_batch_stages(self, batch_to_process: list[git.Commit], progress: Progress) -> None:
-        batch_stage_task = progress.add_task(
-            "[green]🧪Batch stages",
-            total=len(batch_to_process),
-        )
-        failed_tests_commits: set[str] = set()
-        logger.info("Starting pipeline over %d commits...", len(batch_to_process))
-        for commit in batch_to_process:
-            if commit.hexsha in failed_tests_commits:
-                logger.warning("Skipping failed commit %s", commit.hexsha)
+        for entry in os.listdir(cache_dir):
+            entry_path = os.path.join(cache_dir, entry)
+            # skip the active repo clone itself
+            if os.path.abspath(entry_path) == os.path.abspath(repo_path):
                 continue
+            if os.path.isdir(entry_path):
+                try:
+                    shutil.rmtree(entry_path)
+                except Exception as e:
+                    logger.warning("Failed to remove cache entry %s: %s", entry_path, e)
+            else:
+                os.remove(entry_path)
+            logger.info("Removed cache entry: %s", entry_path)
 
-            progress.update(
-                batch_stage_task,
-                description=f"🧪Batch stages ({commit.hexsha[:8]}) (failed: {len(failed_tests_commits)})",
-            )
-            progress.advance(batch_stage_task)
 
-            commit_context: dict[str, Any] = {
-                "commit": commit,
-                "build_failed": False,
-                "abort_pipeline": False,
-                "repo_path": self.repo_path,
-            }
-            logger.info("==== Processing commit %s ====", commit.hexsha)
+def measure(config_path: str | Path) -> None:
+    """High-level wrapper called by the *CLI* entry-point.
 
-            if not self._run_stage_group(self.stages.get("batch_stages", []), commit_context):
-                logger.warning("Commit %s failed to process.", commit.hexsha)
-                failed_tests_commits.add(commit.hexsha)
-                continue
+    Args:
+        config_path: Path to the *TOML* pipeline configuration file.
+    """
+    load_pipeline_config(str(config_path))
+    cfg_dir = Path(config_path).resolve().parent
+    config = Config.get_config()
 
-            logger.info("==== Done with commit %s ====\n", commit.hexsha)
+    # Clone/open repo under a dedicated *cache* directory
+    cache_dir = cfg_dir / ".cache"
+    cache_dir.mkdir(exist_ok=True)
+    project_name = Path(config.repo.url).stem.lower()
+    repo_path = cache_dir / f".cache_{project_name}"
 
-        logger.info("Batch stages completed with %d failed commits.", len(failed_tests_commits))
-        progress.remove_task(batch_stage_task)
+    repo = clone_or_open_repo(repo_path, config.repo.url, config.repo.clone_options)
+    logger.info("Repository ready at %s (branch: %s)", repo_path, config.repo.branch)
+
+    engine = PipelineEngine(repo_path, config=config)
+    try:
+        engine.run()
+    finally:
+        # Attempt cleanup so that repeated runs start fresh
+        try:
+            repo.git.checkout(config.repo.branch)
+        except GitError as exc:
+            logger.warning("Could not checkout default branch for cleanup: %s", exc)
+        shutil.rmtree(repo_path.parent, ignore_errors=True)
+
+def propagate_build_failed(contexts: list[Context]) -> None:
+    """Propagate build_failed status to all contexts with the same commit SHA.
+
+    Args:
+        contexts (list[Context]): List of Context objects to process.
+    """
+    failed_shas = {ctx.commit for ctx in contexts if ctx.build_failed}
+    if failed_shas:
+        for ctx in contexts:
+            if ctx.commit in failed_shas:
+                ctx.build_failed = True

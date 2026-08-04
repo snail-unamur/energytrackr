@@ -2,8 +2,8 @@
 
 import statistics
 import time
-from typing import Any
 
+from energytrackr.pipeline.context import Context
 from energytrackr.pipeline.stage_interface import PipelineStage
 from energytrackr.utils.logger import logger
 from energytrackr.utils.utils import run_command
@@ -12,7 +12,7 @@ from energytrackr.utils.utils import run_command
 class StabilityCheckStage(PipelineStage):
     """Runs a stability test on power usage before running the pipeline."""
 
-    def run(self, context: dict[str, Any]) -> None:
+    def run(self, context: Context) -> None:
         """Runs a stability test on power usage before running the pipeline.
 
         If the system is not stable, the pipeline is aborted by setting
@@ -20,7 +20,7 @@ class StabilityCheckStage(PipelineStage):
         proceed.
 
         Args:
-            context (dict[str, Any]): The pipeline context containing the
+            context (Context): The pipeline context containing the
         """
         logger.info("Running stability test before measuring energy.")
 

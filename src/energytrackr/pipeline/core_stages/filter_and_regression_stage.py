@@ -7,12 +7,11 @@ has a previous and/or a next commit for comparison. If a neighboring commit was 
 during filtering, it is added back from the original list.
 """
 
-from typing import Any
-
 from git.objects.commit import Commit
 
 from energytrackr.config.config_model import PipelineConfig
 from energytrackr.config.config_store import Config
+from energytrackr.pipeline.context import Context
 from energytrackr.pipeline.stage_interface import PipelineStage
 from energytrackr.utils.logger import logger
 
@@ -24,7 +23,7 @@ class FilterAndRegressionStage(PipelineStage):
     based on the commit order and configuration parameters.
     """
 
-    def run(self, context: dict[str, Any]) -> None:
+    def run(self, context: Context) -> None:
         """Executes the filter and regression augmentation stage of the pipeline.
 
         This method processes the list of commits provided in the context, applying filtering criteria
@@ -33,15 +32,14 @@ class FilterAndRegressionStage(PipelineStage):
         if no commits remain after filtering.
 
         Args:
-            context (dict[str, Any]): The pipeline context containing at least a "commits" key with a list of Commit objects.
-                The context is modified in place.
+            context (Context): The pipeline context containing at least a "commits" key with a list of Commit objects.
 
         Side Effects:
             - Logs information and warnings about the commit processing steps.
             - Modifies the "commits" list in the context in place.
             - Sets "abort_pipeline" in the context to True if no commits are available for further processing.
         """
-        if not (original_commits := context.get("commits", [])):
+        if not (original_commits := context.get_commits()):
             logger.warning("No commits to process.", context=context)
             context["abort_pipeline"] = True
             return
@@ -115,7 +113,7 @@ class FilterAndRegressionStage(PipelineStage):
         min_children: int,
     ) -> list[Commit]:
         original_count: int = len(original_commits)
-        augmented: dict[str, Commit] = {commit.hexsha: commit for commit in filtered_commits}
+        augmented: dict[Commit, Commit] = {commit: commit for commit in filtered_commits}
         for commit in filtered_commits:
             if not (hexsha := commit.hexsha):
                 logger.warning("Commit %s has no hexsha.", commit, context={})
@@ -128,17 +126,17 @@ class FilterAndRegressionStage(PipelineStage):
                     break
                 neighbor: Commit = original_commits[neighbor_pos]
                 if neighbor.hexsha not in augmented:
-                    augmented[neighbor.hexsha] = neighbor
+                    augmented[neighbor] = neighbor
             for i in range(1, min_children + 1):
                 if (neighbor_pos := pos + i) >= original_count:
                     break
-                neighbor: Commit = original_commits[neighbor_pos]
+                neighbor = original_commits[neighbor_pos]
                 if neighbor.hexsha not in augmented:
-                    augmented[neighbor.hexsha] = neighbor
+                    augmented[neighbor] = neighbor
         final_commits: list[Commit] = [augmented[h] for h in augmented]
         final_commits.sort(key=lambda c: commit_index[c.hexsha])
         return final_commits
 
     @staticmethod
-    def _log_commit_counts(stage: str, count: int, context: dict[str, Any]) -> None:
+    def _log_commit_counts(stage: str, count: int, context: Context) -> None:
         logger.info("Number of commits %s: %d", stage, count, context=context)
