@@ -17,6 +17,7 @@ class CommitStatsConfig:
 
     column: str | None = None
     min_measurements: int | None = None
+    secondary_column: str | None = None  # CSV column whose per-commit median is stored in ctx.stats["secondary_medians"]
 
 
 class CommitStats(Transform, Configurable[CommitStatsConfig]):
@@ -39,6 +40,7 @@ class CommitStats(Transform, Configurable[CommitStatsConfig]):
         self._config_column = self.config.column
         self._fallback_column = data.energy_fields[0]
         self.min_measurements = self.config.min_measurements or data.min_measurements
+        self._secondary_column = self.config.secondary_column
 
     def apply(self, ctx: Context) -> None:
         """Apply the CommitStats transform to the context.
@@ -86,3 +88,9 @@ class CommitStats(Transform, Configurable[CommitStatsConfig]):
             "y_errors": y_errors,
             "df_median": df_m,
         })
+
+        # Optional secondary column (e.g. "seconds") — per-commit median for overlay plots
+        if self._secondary_column and self._secondary_column in df.columns:
+            sec_med = df.groupby("commit", sort=False)[self._secondary_column].median()
+            ctx.stats["secondary_medians"] = [float(sec_med.get(c, float("nan"))) for c in valid_commits]
+            ctx.stats["secondary_column"] = self._secondary_column
