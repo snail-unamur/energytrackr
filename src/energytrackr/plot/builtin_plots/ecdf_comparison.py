@@ -58,7 +58,7 @@ class ECDFComparison(ComparisonBase):
             sizing_mode="stretch_width",
             tools="pan,box_zoom,reset,save,wheel_zoom,hover",
             toolbar_location="above",
-            x_axis_label=f"{ctx.energy_fields[0]} (J)",
+            x_axis_label=f"{ctx.active_column} ({ctx.active_unit})",
             y_axis_label="ECDF",
         )
 
@@ -106,7 +106,7 @@ class ECDFComparison(ComparisonBase):
         ]
 
     def _title(self, ctx: Context) -> str:  # noqa: PLR6301
-        return f"Empirical CDF: {ctx.energy_fields[0]}"
+        return f"Empirical CDF: {ctx.active_column}"
 
     def _key(self, ctx: Context) -> str:  # noqa: ARG002, PLR6301
         return "ECDF Comparison"

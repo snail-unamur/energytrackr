@@ -29,14 +29,14 @@
             <span class="badge green">↓ {{ improvements }}</span>
         </div>
 
-        <div class="summary-label">Mean energy</div>
-        <div class="summary-value">{{ mean_energy|round(2) }} J</div>
+        <div class="summary-label">Mean {{ active_label }}</div>
+        <div class="summary-value">{{ mean_energy|round(2) }} {{ active_unit }}</div>
 
-        <div class="summary-label">Median energy</div>
-        <div class="summary-value">{{ median_energy|round(2) }} J</div>
+        <div class="summary-label">Median {{ active_label }}</div>
+        <div class="summary-value">{{ median_energy|round(2) }} {{ active_unit }}</div>
 
         <div class="summary-label">Std dev</div>
-        <div class="summary-value">{{ std_energy|round(2) }} J</div>
+        <div class="summary-value">{{ std_energy|round(2) }} {{ active_unit }}</div>
 
         <div class="summary-label">Normal dists</div>
         <div class="summary-value">{{ normal_count }} / {{ total_commits }}</div>

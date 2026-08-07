@@ -94,10 +94,10 @@ class ChangePointComparison(FontMixin, HoverMixin, BasePlot, Configurable[Change
         super()._configure(fig, ctx)
         # axis labels
         fig.xaxis[0].axis_label = "Commit (oldest → newest)"
-        fig.yaxis[0].axis_label = f"Median {ctx.energy_fields[0]} (J)"
+        fig.yaxis[0].axis_label = f"Median {ctx.active_column} ({ctx.active_unit})"
 
     def _title(self, ctx: Context) -> str:  # noqa: PLR6301
-        return f"Change-Point Detection: {ctx.energy_fields[0]} Medians"
+        return f"Change-Point Detection: {ctx.active_column} Medians"
 
     def _key(self, ctx: Context) -> str:  # noqa: ARG002, PLR6301
         return "Change Point Detection"

@@ -61,8 +61,11 @@ class SummaryBox(PageObj, Configurable[SummaryBoxConfig]):
             return "<p><strong>Error:</strong> summary template missing.</p>"
 
         tmpl = get_local_env(env, self.template_path).get_template(Path(self.template_path).name)
-        summary = self._compute_overall_summary(ctx.energy_fields[0], ctx)
-        return tmpl.render(column=ctx.energy_fields[0], **summary)
+        col = ctx.active_column or ctx.energy_fields[0]
+        unit = ctx.active_unit or "J"
+        label = ctx.active_label or col
+        summary = self._compute_overall_summary(col, ctx)
+        return tmpl.render(column=col, active_unit=unit, active_label=label, **summary)
 
     @staticmethod
     def _compute_overall_summary(energy_column: str, ctx: Context) -> dict[str, Any]:

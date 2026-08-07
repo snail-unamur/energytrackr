@@ -50,11 +50,11 @@ class EvolutionPlot(SingleCommitZoomMixin, FontMixin, BasePlot, Configurable[Evo
 
         # labels
         fig.xaxis[0].axis_label = "Commit (oldest → newest)"
-        fig.yaxis[0].axis_label = f"Median {ctx.energy_fields[0]} (J)"
+        fig.yaxis[0].axis_label = f"Median {ctx.active_column} ({ctx.active_unit})"
 
     def _title(self, ctx: Context) -> str:  # noqa: PLR6301
         # Custom title including field
-        return f"Energy Consumption - {ctx.energy_fields[0]}"
+        return f"Energy Consumption - {ctx.active_column}"
 
     def _key(self, ctx: Context) -> str:  # noqa: ARG002, PLR6301
         # Store under 'Evolution'

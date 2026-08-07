@@ -320,7 +320,7 @@ class CUSUMComparison(FontMixin, HoverMixin, BasePlot, Configurable[CUSUMCompari
         ]
 
     def _title(self, ctx: Context) -> str:  # noqa: PLR6301
-        return f"CUSUM Comparison - {ctx.energy_fields[0]}"
+        return f"CUSUM Comparison - {ctx.active_column}"
 
     def _key(self, ctx: Context) -> str:  # noqa: ARG002, PLR6301
         return "CUSUM"

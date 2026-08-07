@@ -109,6 +109,27 @@ class AnalysisCfg(BaseModel):
     thresholds: Thresholds = Thresholds()
 
 
+class MetricCfg(BaseModel):
+    """Configuration for a single analysis metric (column + display metadata).
+
+    Attributes:
+        column (str): The CSV column name to analyse.
+        label (str): Human-readable label (e.g. "Package Energy", "Runtime").
+        unit (str): Unit string appended to axis labels (e.g. "J", "s").
+    """
+
+    column: str
+    label: str = ""
+    unit: str = ""
+
+    def model_post_init(self, __context: Any) -> None:  # noqa: ANN401
+        """Default label and unit from column name if not provided."""
+        if not self.label:
+            object.__setattr__(self, "label", self.column)
+        if not self.unit:
+            object.__setattr__(self, "unit", self.column)
+
+
 class DataCfg(BaseModel):
     """Configuration model for energy data plotting.
 
@@ -116,6 +137,8 @@ class DataCfg(BaseModel):
         csv_columns (Sequence[str]): Tuple of column names expected in the CSV data,
                                      including commit identifier and energy measurements.
         energy_fields (Sequence[str]): Tuple of column names corresponding to energy measurement fields.
+        metrics (list[MetricCfg]): Ordered list of metrics to analyse. When non-empty, drives the
+            multi-metric pipeline loop. Defaults to empty (pipeline falls back to energy_fields[0]).
         min_measurements (int): Minimum number of measurements required for analysis.
         drop_outliers (bool): Whether to remove outlier data points based on the IQR method.
         outlier_iqr (float): The interquartile range (IQR) multiplier used to determine outliers.
@@ -123,6 +146,7 @@ class DataCfg(BaseModel):
 
     csv_columns: Sequence[str] = ("commit", "energy-pkg", "energy-core", "energy-gpu")
     energy_fields: Sequence[str] = ("energy-pkg", "energy-core", "energy-gpu")
+    metrics: list[MetricCfg] = Field(default_factory=list)
     min_measurements: int = 2
     drop_outliers: bool = True
     outlier_iqr: float = 1.5

@@ -220,12 +220,34 @@ def _build_plots(ctx: Context, plot_objs: Sequence[dict[str, Any]]) -> None:
         obj.build(ctx)
 
 
+def _get_metrics(settings: Any) -> list[Any]:
+    """Return the list of MetricCfg objects to analyse.
+
+    If ``energytrackr.data.metrics`` is non-empty in the config it is used as-is.
+    Otherwise a single metric is synthesised from ``energy_fields[0]`` so that
+    old configs keep working without any YAML changes.
+    """
+    from energytrackr.plot.config import MetricCfg  # local import to avoid circularity
+
+    cfg_metrics = settings.energytrackr.data.metrics
+    if cfg_metrics:
+        return list(cfg_metrics)
+    # Backward-compat: single metric derived from energy_fields[0]
+    first = settings.energytrackr.data.energy_fields[0]
+    return [MetricCfg(column=first, label=first, unit="J")]
+
+
 def plot(
     input_path: str,
     git_repo_path: str | None = None,
     config_path: str | None = None,
 ) -> None:
     """Main entry point: orchestrate loading, plotting, and report generation.
+
+    Runs the full analysis pipeline once per metric declared in
+    ``energytrackr.data.metrics`` and combines all sections into a single HTML
+    report file.  Each metric gets its own labelled section; the Change-Event
+    Level Legend is rendered only once (before the first metric).
 
     Args:
         input_path (str): Path to the CSV file containing energy data.
@@ -239,28 +261,56 @@ def plot(
     # Load settings
     settings = get_settings(str(cfg_path))
 
-    # Prepare context
-    ctx = _build_context(
-        csv_path,
-        git_repo_path,
-        list(settings.energytrackr.data.energy_fields),
-    )
+    metrics = _get_metrics(settings)
+    all_html: list[str] = []
 
-    # Apply data transforms
-    _apply_transforms(ctx, settings.energytrackr.plot.transforms)
+    for i, metric in enumerate(metrics):
+        logger.info("▶ Analysing metric '%s' (%s)", metric.column, metric.unit)
 
-    # Resolve plot objects for the context
-    _resolve_plot_objects(ctx, settings.energytrackr.plot.objects)
+        # Fresh context for every metric
+        ctx = _build_context(
+            csv_path,
+            git_repo_path,
+            list(settings.energytrackr.data.energy_fields),
+        )
+        ctx.active_column = metric.column
+        ctx.active_unit = metric.unit
+        ctx.active_label = metric.label
 
-    # Build plots
-    _build_plots(ctx, settings.energytrackr.plot.plots)
+        # Apply data transforms
+        _apply_transforms(ctx, settings.energytrackr.plot.transforms)
 
-    # Render HTML report
-    html_content = _render_page_sections(ctx, settings.energytrackr.plot.page)
+        # Resolve plot objects for the context
+        _resolve_plot_objects(ctx, settings.energytrackr.plot.objects)
 
-    # Write out report
+        # Build plots
+        _build_plots(ctx, settings.energytrackr.plot.plots)
+
+        # Section header divider between metrics (visible in the rendered HTML)
+        header_html = (
+            f'<div style="text-align:center;margin:2rem auto 0.5rem;max-width:800px;">'
+            f'<h2 style="font-family:Roboto,sans-serif;font-size:1.4rem;'
+            f'color:#333;border-bottom:2px solid #ccc;padding-bottom:0.5rem;">'
+            f'{metric.label}</h2></div>'
+        )
+        all_html.append(header_html)
+
+        # For metrics after the first, skip the LevelLegend (it is metric-agnostic)
+        page_specs = list(settings.energytrackr.plot.page)
+        if i > 0:
+            page_specs = [
+                s for s in page_specs
+                if "level_legend" not in s.get("module", "").lower()
+            ]
+
+        # Render page sections for this metric
+        html_content = _render_page_sections(ctx, page_specs)
+        all_html.append(html_content)
+
+    # Combine all metric sections into one file
+    combined_html = "\n".join(all_html)
     output_file = csv_path.with_suffix(".html")
-    output_file.write_text(html_content, encoding="utf-8")
+    output_file.write_text(combined_html, encoding="utf-8")
     logger.info("✔ Report exported to %s", output_file)
 
     # Optionally open in browser

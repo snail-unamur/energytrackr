@@ -35,7 +35,9 @@ class CommitStats(Transform, Configurable[CommitStatsConfig]):
         """Initialize the outlier filter with configuration parameters."""
         super().__init__(CommitStatsConfig, **params)
         data = get_settings().energytrackr.data
-        self.column = self.config.column or data.energy_fields[0]
+        # column resolved lazily in apply() to pick up ctx.active_column
+        self._config_column = self.config.column
+        self._fallback_column = data.energy_fields[0]
         self.min_measurements = self.config.min_measurements or data.min_measurements
 
     def apply(self, ctx: Context) -> None:
@@ -50,7 +52,7 @@ class CommitStats(Transform, Configurable[CommitStatsConfig]):
             CommitStatsMissingOrEmptyDataFrameError: If the DataFrame is missing or empty, or if the specified column
             is not found.
         """
-        col = self.column
+        col = self._config_column or ctx.active_column or self._fallback_column
         min_meas = self.min_measurements
 
         df: pd.DataFrame = ctx.artefacts.get("df", pd.DataFrame())

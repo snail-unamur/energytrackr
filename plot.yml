@@ -2,6 +2,13 @@ energytrackr:
   data:
     csv_columns: ["commit", "energy-pkg", "energy-core", "energy-gpu"]
     energy_fields: ["energy-pkg", "energy-core"] # analyse 2 metrics only
+    metrics:
+      - column: energy-pkg
+        label: "Package Energy"
+        unit: "J"
+      - column: seconds
+        label: "Runtime"
+        unit: "s"
     min_measurements: 3 # ≥3 samples / commit
     drop_outliers: true
     outlier_iqr: 1.5 # Tukey IQR rule
@@ -24,20 +31,16 @@ energytrackr:
       - module: energytrackr.plot.builtin_data_transforms.filter_outliers:FilterOutliers
         params:
           commit_col: commit
-          energy_col: energy-pkg
       - module: energytrackr.plot.builtin_data_transforms.commit_stats:CommitStats
         params:
-          column: energy-pkg
           min_measurements: 3
       - module: energytrackr.plot.builtin_data_transforms.commit_details:CommitDetails
       - module: energytrackr.plot.builtin_data_transforms.compute_distribution:ComputeDistribution
         params:
-          column: energy-pkg
           normality_p: 0.05
           min_values_for_normality: 3
       - module: energytrackr.plot.builtin_data_transforms.detect_changes:DetectChanges
         params:
-          column: energy-pkg
           thresholds:
             welch_p: 0.05
           tags:

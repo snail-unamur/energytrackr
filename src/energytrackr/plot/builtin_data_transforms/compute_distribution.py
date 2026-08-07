@@ -50,7 +50,7 @@ class ComputeDistribution(Transform, Configurable[ComputeDistributionConfig]):
         """
         df = ctx.artefacts["df"]
         commits = ctx.stats["valid_commits"]
-        col = self.config.column or ctx.energy_fields[0]
+        col = self.config.column or ctx.active_column or ctx.energy_fields[0]
         min_for_sw = self.config.min_values_for_normality
         alpha = self.config.normality_p
 

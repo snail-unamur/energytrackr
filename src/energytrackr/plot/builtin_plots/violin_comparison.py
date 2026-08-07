@@ -45,13 +45,13 @@ class ViolinComparison(
         return {"kde_src": kde_src}
 
     def _make_figure(self, ctx: Context) -> figure:
-        field = ctx.energy_fields[0]
+        field = ctx.active_column
         p = figure(
             title=self._title(ctx),
             sizing_mode="stretch_width",
             tools="pan,box_zoom,reset,save,wheel_zoom",
             toolbar_location="above",
-            y_axis_label=f"{field} (J)",
+            y_axis_label=f"{field} ({ctx.active_unit})",
         )
         return p
 
@@ -108,14 +108,14 @@ class ViolinComparison(
         self._configure_xaxis(fig, self._labels[0], self._labels[-1])
 
     def _hover_tooltips(self, ctx: Context) -> list[tuple[str, str]]:  # noqa: PLR6301
-        field = ctx.energy_fields[0]
+        field = ctx.active_column
         return [
             ("Commit", "@commit"),
-            (field, "@y{0.00} J"),
+            (field, f"@y{{0.00}} {ctx.active_unit}"),
         ]
 
     def _title(self, ctx: Context) -> str:  # noqa: PLR6301
-        return f"Violin Plot: {ctx.energy_fields[0]}"
+        return f"Violin Plot: {ctx.active_column}"
 
     def _key(self, ctx: Context) -> str:  # noqa: ARG002, PLR6301
         return "Violin"
