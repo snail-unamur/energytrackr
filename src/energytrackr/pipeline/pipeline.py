@@ -102,13 +102,13 @@ class PipelineEngine:
         )
         self._setup_stage = StageGroup(
             "setup",
-            [CopyDirectoryStage(), SetDirectoryStage(), CheckoutStage(), JavaSetupStage(), BuildStage()],
+            [CopyDirectoryStage(), SetDirectoryStage(), CheckoutStage(), BuildStage()],
             parallel=False,
             deduplicate=True,
         )
         self._test_stage = StageGroup(
             "test",
-            [TemperatureCheckStage(), SetDirectoryStage(), JavaSetupStage(), MeasureEnergyStage()],
+            [TemperatureCheckStage(), SetDirectoryStage(), MeasureEnergyStage()],
             parallel="test" in par,
         )
         self._post_stage = StageGroup("post", [PostTestStage()], parallel="post" in par)
