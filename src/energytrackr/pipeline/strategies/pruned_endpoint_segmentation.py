@@ -79,7 +79,7 @@ class PrunedEndpointSegmentationStrategy(BatchStrategy):
         if not self._pending_regions:
             self._commits = commits
             regions = []
-            self._initial_zone_size = max(5, math.ceil(len(commits) / 10))
+            self._initial_zone_size = max(5, math.ceil(len(commits) / 20))
             for start in range(0, len(self._commits) - 1, self._initial_zone_size - 1):
                 end = min(start + self._initial_zone_size - 1, len(self._commits) - 1)
                 self._pending_regions.append((start, end))
