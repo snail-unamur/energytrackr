@@ -98,11 +98,19 @@ class SummaryBox(PageObj, Configurable[SummaryBoxConfig]):
             mean_energy = df[energy_column].mean()
             median_energy = df[energy_column].median()
             std_energy = df[energy_column].std()
+            # Per-column stats for secondary columns present in the CSV
+            _extra_cols = [("seconds", "Runtime", "s")]
+            extra_metrics = [
+                {"label": lbl, "mean": df[c].mean(), "median": df[c].median(), "std": df[c].std(), "unit": u}
+                for c, lbl, u in _extra_cols
+                if c in df.columns and c != energy_column
+            ]
         else:
             outliers_removed_count = 0
             mean_energy = None
             median_energy = None
             std_energy = None
+            extra_metrics = []
         valid_commits = ctx.stats["valid_commits"]
         oldest_commit = valid_commits[-1] if valid_commits else None
         latest_commit = valid_commits[0] if valid_commits else None
@@ -125,6 +133,7 @@ class SummaryBox(PageObj, Configurable[SummaryBoxConfig]):
             "mean_energy": mean_energy,
             "median_energy": median_energy,
             "std_energy": std_energy,
+            "extra_metrics": extra_metrics,
             "avg_cohens_d": np.mean([abs(e.effect_size.cohen_d) for e in changes]) if changes else 0.0,
             "normal_count": sum(normality),
             "non_normal_count": len(normality) - sum(normality),

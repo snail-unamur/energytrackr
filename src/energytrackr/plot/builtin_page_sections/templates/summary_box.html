@@ -2,6 +2,39 @@
 
 {% block title %}Summary — {{ project_name }}{% endblock %}
 
+{% block head %}
+{{ super() }}
+<style>
+    .stats-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1.25rem;
+        font-size: 0.9rem;
+    }
+    .stats-table th,
+    .stats-table td {
+        padding: 0.45rem 0.75rem;
+        border: 1px solid var(--card-border);
+        text-align: center;
+    }
+    .stats-table thead th {
+        background: rgba(0,0,0,0.04);
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.78rem;
+        letter-spacing: 0.4px;
+    }
+    .stats-table tbody tr:nth-child(even) {
+        background: rgba(0,0,0,0.02);
+    }
+    .stats-table tbody td:first-child {
+        font-weight: 600;
+        text-align: left;
+        color: #555;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="card">
     <h2 class="mb-6 text-xl font-semibold">Summary — {{ column }}</h2>
@@ -29,20 +62,46 @@
             <span class="badge green">↓ {{ improvements }}</span>
         </div>
 
-        <div class="summary-label">Mean {{ active_label }}</div>
-        <div class="summary-value">{{ mean_energy|round(2) }} {{ active_unit }}</div>
-
-        <div class="summary-label">Median {{ active_label }}</div>
-        <div class="summary-value">{{ median_energy|round(2) }} {{ active_unit }}</div>
-
-        <div class="summary-label">Std dev</div>
-        <div class="summary-value">{{ std_energy|round(2) }} {{ active_unit }}</div>
-
         <div class="summary-label">Normal dists</div>
-        <div class="summary-value">{{ normal_count }} / {{ total_commits }}</div>
+        <div class="summary-value">{{ normal_count }} / {{ total_commits }}</div>
 
         <div class="summary-label">Outliers removed</div>
         <div class="summary-value">{{ outliers_removed }}</div>
     </div>
+
+    <table class="stats-table">
+        <thead>
+            <tr>
+                <th></th>
+                <th>{{ active_label }} ({{ active_unit }})</th>
+                {% for m in extra_metrics %}
+                <th>{{ m.label }} ({{ m.unit }})</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Mean</td>
+                <td>{{ mean_energy|round(2) }}</td>
+                {% for m in extra_metrics %}
+                <td>{{ m.mean|round(2) }}</td>
+                {% endfor %}
+            </tr>
+            <tr>
+                <td>Median</td>
+                <td>{{ median_energy|round(2) }}</td>
+                {% for m in extra_metrics %}
+                <td>{{ m.median|round(2) }}</td>
+                {% endfor %}
+            </tr>
+            <tr>
+                <td>Std dev</td>
+                <td>{{ std_energy|round(2) }}</td>
+                {% for m in extra_metrics %}
+                <td>{{ m.std|round(2) }}</td>
+                {% endfor %}
+            </tr>
+        </tbody>
+    </table>
 </div>
 {% endblock %}
