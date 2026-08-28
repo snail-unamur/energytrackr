@@ -118,7 +118,42 @@ class ChangeTable(PageObj, Configurable[ChangeTableConfig]):
         # Prepare rows
         logger.info("energy fields: %s", ctx.energy_fields)
         logger.info("stats fields: %s", ctx.stats.keys())
-        col = ctx.energy_fields[0]
+        col = ctx.active_column or ctx.energy_fields[0]
+        unit = ctx.active_unit or "J"
+        # Build dynamic group_map labels based on the active metric unit
+        dynamic_group_map = {
+            "stats": [
+                ("n_val", "n"),
+                ("normality", "Normality (Shapiro-Wilk)"),
+                ("median_val", f"Median ({unit})"),
+                ("std_val", f"Std Dev ({unit})"),
+            ],
+            "tests": [
+                ("p_value", "p-value (Welch-test)"),
+                ("cohen_str", "Cohen d"),
+                ("effect_cat", "Effect"),
+                ("pct_change", "\u0394 %"),
+                ("pct_cat", "\u0394 cat"),
+                ("abs_diff", f"\u0394 {unit}"),
+                ("practical", "Practical"),
+            ],
+        }
+        # Re-expand columns if they use groups so labels pick up the dynamic unit
+        if self.config.columns and any("group" in c for c in self.config.columns):
+            expanded: list[dict[str, str]] = []
+            for c in self.config.columns:
+                if "group" in c:
+                    keys = dynamic_group_map[c["group"]]
+                    if include := c.get("include"):
+                        keys = [pair for pair in keys if pair[0] in include]
+                    if exclude := c.get("exclude"):
+                        keys = [pair for pair in keys if pair[0] not in exclude]
+                    expanded.extend({"key": k, "label": lbl} for k, lbl in keys)
+                else:
+                    expanded.append({"key": c["key"], "label": c.get("label", c["key"])})
+            cols_to_use = expanded
+        else:
+            cols_to_use = self.columns
         stats = ctx.stats
         rows = {e.index: e for e in ctx.artefacts["change_events"]}
         df_m = stats["df_median"]
@@ -160,4 +195,4 @@ class ChangeTable(PageObj, Configurable[ChangeTableConfig]):
             })
         settings = get_settings()
         # Render with Jinja2
-        return tmpl.render(columns=self.columns, rows=table_rows, font=settings.energytrackr.report.font)
+        return tmpl.render(columns=cols_to_use, rows=table_rows, font=settings.energytrackr.report.font)

@@ -89,7 +89,7 @@ class QQComparison(
         )
 
     def _title(self, ctx: Context) -> str:  # noqa: PLR6301
-        return f"QQ-Plot: {ctx.energy_fields[0]}"
+        return f"QQ-Plot: {ctx.active_column}"
 
     def _key(self, ctx: Context) -> str:  # noqa: ARG002, PLR6301
         return "Quantile Quantile"

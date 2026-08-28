@@ -53,6 +53,10 @@ def _build_context(csv_path: Path, git_repo_path: str | None, energy_fields: lis
         raise MissingEnergyFieldError()
 
     ctx = Context(input_path=str(csv_path), energy_fields=list(energy_fields))
+    # Set default active metric from the first energy field (single-run mode)
+    ctx.active_column = energy_fields[0]
+    ctx.active_unit = "J"
+    ctx.active_label = energy_fields[0]
     if git_repo_path:
         ctx.artefacts["git_repo_path"] = git_repo_path
     return ctx
@@ -261,7 +265,7 @@ def plot(
     # Write out report
     output_file = csv_path.with_suffix(".html")
     output_file.write_text(html_content, encoding="utf-8")
-    logger.info("✔ Report exported to %s", output_file)
+    logger.info("\u2714 Report exported to %s", output_file)
 
     # Optionally open in browser
     if settings.energytrackr.report.chart.get("open", False):

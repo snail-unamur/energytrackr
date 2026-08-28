@@ -21,10 +21,18 @@ class Context:
         artefacts (dict[str, Any]): Runtime artefacts produced by data transforms and plot objects.
         stats (dict[str, Any]): Statistical summaries or metrics computed during analysis.
         fig (figure | None): The figure object created by the pipeline and manipulated by plot objects.
+        active_column (str): The column being analysed in the current pipeline iteration.
+        active_unit (str): The unit string for active_column (e.g. "J", "s").
+        active_label (str): The human-readable label for active_column.
     """
 
     input_path: str
     energy_fields: list[str]
+
+    # Active metric set by the pipeline loop
+    active_column: str = ""
+    active_unit: str = ""
+    active_label: str = ""
 
     # Runtime artefacts produced by transforms & plot objects
     artefacts: dict[str, Any] = field(default_factory=dict)

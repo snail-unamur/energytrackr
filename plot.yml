@@ -24,20 +24,17 @@ energytrackr:
       - module: energytrackr.plot.builtin_data_transforms.filter_outliers:FilterOutliers
         params:
           commit_col: commit
-          energy_col: energy-pkg
       - module: energytrackr.plot.builtin_data_transforms.commit_stats:CommitStats
         params:
-          column: energy-pkg
           min_measurements: 3
+          secondary_column: seconds  # compute per-commit runtime medians for overlay plots
       - module: energytrackr.plot.builtin_data_transforms.commit_details:CommitDetails
       - module: energytrackr.plot.builtin_data_transforms.compute_distribution:ComputeDistribution
         params:
-          column: energy-pkg
           normality_p: 0.05
           min_values_for_normality: 3
       - module: energytrackr.plot.builtin_data_transforms.detect_changes:DetectChanges
         params:
-          column: energy-pkg
           thresholds:
             welch_p: 0.05
           tags:
@@ -106,6 +103,10 @@ energytrackr:
     plots:
       - module: energytrackr.plot.builtin_plots.evolution_plot:EvolutionPlot
         params:
+          secondary_column: seconds   # overlay runtime on right Y-axis
+          secondary_unit: "s"
+          secondary_label: "Runtime"
+          secondary_visible: false    # hidden by default — click legend to toggle
           objects:
             [
               median_line,
@@ -129,6 +130,10 @@ energytrackr:
           objects: [dynamic_ticks, legend_policy]
       - module: energytrackr.plot.builtin_plots.change_point_comparison:ChangePointComparison
         params:
+          secondary_column: seconds   # overlay runtime on right Y-axis
+          secondary_unit: "s"
+          secondary_label: "Runtime"
+          secondary_visible: false    # hidden by default — click legend to toggle
           objects: [dynamic_ticks, legend_policy]
 
     page:

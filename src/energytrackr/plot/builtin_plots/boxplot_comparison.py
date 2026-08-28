@@ -60,9 +60,9 @@ class BoxplotComparison(ComparisonBase):
             sizing_mode="stretch_width",
             tools="pan,box_zoom,reset,save,wheel_zoom",
             toolbar_location="above",
-            title=f"Distribution Boxplot: {ctx.energy_fields[0]}",
+            title=f"Distribution Boxplot: {ctx.active_column}",
             x_axis_label="Commit (short hash)",
-            y_axis_label=f"{ctx.energy_fields[0]} (J)",
+            y_axis_label=f"{ctx.active_column} ({ctx.active_unit})",
         )
         # tilt x-axis labels like the old version
         for axis in fig.xaxis:
